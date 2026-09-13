@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JARVIS</title>
+  <meta name="theme-color" content="#060310" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23060310'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23d8b4fe'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23a855f7' stroke-width='1.5'/%3E%3C/svg%3E" />
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(ellipse at 50% 30%, #140832 0%, #060310 55%, #030108 100%);
+      color: #ede9fe;
+    }
+    .card {
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+    }
+    .orb {
+      width: 84px;
+      height: 84px;
+      margin: 0 auto 20px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 45%, #d8b4fe 0%, #a855f7 45%, #4c1d95 75%, transparent 100%);
+      box-shadow: 0 0 40px 6px rgba(168, 85, 247, 0.45);
+    }
+    h1 { font-size: 1.3rem; font-weight: 600; margin: 0 0 6px; letter-spacing: 0.02em; }
+    p.sub { color: #9a8bc4; margin: 0 0 28px; font-size: 0.9rem; }
+    form { display: flex; flex-direction: column; gap: 12px; }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid #2c1a54;
+      background: rgba(18, 9, 42, 0.6);
+      color: #ede9fe;
+      font-size: 1rem;
+    }
+    input:focus { outline: none; border-color: #a855f7; }
+    button {
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: none;
+      background: #a855f7;
+      color: #0b0517;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: default; }
+    button:not(:disabled):active { background: #d8b4fe; }
+    .error {
+      min-height: 1.2em;
+      color: #f5a0b0;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="orb"></div>
+    <h1>JARVIS</h1>
+    <p class="sub">Acceso privado. Ingresa la contraseña para continuar.</p>
+    <form id="login-form">
+      <input id="password" type="password" placeholder="Contraseña" autocomplete="current-password" autofocus />
+      <button id="submit-btn" type="submit">Entrar</button>
+      <div class="error" id="error"></div>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById("login-form");
+    const input = document.getElementById("password");
+    const errorEl = document.getElementById("error");
+    const submitBtn = document.getElementById("submit-btn");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorEl.textContent = "";
+      submitBtn.disabled = true;
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: input.value }),
+        });
+        if (res.ok) {
+          window.location.href = "/";
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        errorEl.textContent = data.error === "Incorrect password." ? "Contraseña incorrecta." : (data.error || "Algo salió mal.");
+      } catch {
+        errorEl.textContent = "No se pudo conectar. Revisa tu conexión.";
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -12,6 +12,7 @@ export default defineConfig({
       GEMINI_API_KEY: "",
       ELEVENLABS_API_KEY: "",
       ELEVENLABS_VOICE_ID: "",
+      JARVIS_APP_PASSWORD: "",
     },
   },
 });

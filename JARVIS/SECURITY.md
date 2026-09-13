@@ -67,6 +67,34 @@ hard constraints for any change.
   merge is possible). Before any bulk change to existing vault structure,
   inspect current content first — never assume an empty/example state.
 
+## Access control
+
+JARVIS is designed for exactly one user, deployed at a URL that isn't
+secret by construction (anyone with the link could otherwise reach it).
+When `JARVIS_APP_PASSWORD` is set (see `JARVIS/CONFIG.md`), the entire app
+— every page and every `/api/*` route except the login endpoint itself —
+requires a valid session before responding.
+
+- No accounts, no per-user data model — this is a single shared password
+  by design, matching the single-user scope of the whole project. Do not
+  build out multi-user auth unless the project's scope actually changes.
+- A session is a timestamp signed with `JARVIS_APP_PASSWORD`
+  (`app/src/server/auth.ts`, HMAC-SHA256, verified with
+  `crypto.timingSafeEqual`) stored in an `HttpOnly`, `SameSite=Lax` cookie.
+  There is no server-side session store — this is deliberate, so a login
+  survives the process restarting (e.g. a host spinning the service down
+  when idle) without forcing a re-login.
+- The password itself is compared with `crypto.timingSafeEqual`, never
+  `===`, and is never written to logs (see `JARVIS/CONFIG.md` § Rules) or
+  echoed back in any response.
+- `app/public/manifest.json`, `app/public/sw.js`, and `app/public/icons/`
+  are intentionally left reachable without a session — they carry no
+  personal data, and a browser must be able to fetch them to install the
+  app as a PWA in the first place.
+- Rotating the password (changing `JARVIS_APP_PASSWORD` and redeploying)
+  invalidates every previously issued session automatically, since old
+  sessions were signed with the old password and will fail verification.
+
 ## Reviewing changes
 
 Any PR/change that:

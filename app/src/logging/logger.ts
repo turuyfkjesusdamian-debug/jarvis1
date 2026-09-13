@@ -9,6 +9,8 @@ const SECRET_KEYS = new Set([
   "api_key",
   "geminiapikey",
   "elevenlabsapikey",
+  "jarvisapppassword",
+  "password",
   "token",
   "authorization",
   "secret",

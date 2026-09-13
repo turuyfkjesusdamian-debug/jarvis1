@@ -70,7 +70,9 @@ JARVIS is split into two halves that share a filesystem but not a runtime:
   The core has no Gemini/ElevenLabs-specific types; it only sees
   `generateConversationalReply()` and `synthesizeSpeech()`.
 - `server/` — HTTP endpoints (`/api/chat`, `/api/tts`, `/api/tools`,
-  `/api/status`) and static file serving for `public/`.
+  `/api/status`, `/api/auth/{login,logout}`), the optional password-gate
+  middleware (`server/auth.ts`, see `JARVIS/SECURITY.md` § Access
+  control), and static file serving for `public/`.
 - `logging/` — one structured logger used everywhere; never `console.log`
   directly in library code.
 
@@ -159,6 +161,30 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-13** — Made JARVIS installable as a PWA and gated the whole
+  app behind an optional single shared password, at the user's request
+  ("que sea una app en vez de una página para que solo yo la pueda
+  utilizar"):
+  - **PWA**: added `app/public/manifest.json`, a minimal
+    `app/public/sw.js` (no offline caching — every JARVIS feature needs a
+    live server, so caching responses would just serve stale data; the
+    service worker exists purely to satisfy Chrome's installability
+    check), and a purple orb-styled icon set (`app/public/icons/`).
+    Registered from `app/public/app.js`. The result: "Add to Home Screen"
+    on Android Chrome installs it with its own icon, opening full-screen
+    with no browser address bar — no native build, no app store, no
+    separate codebase to maintain. A future server-side change reaches
+    the installed app on the next open, same as any web page, since
+    there's no offline cache to go stale.
+  - **Access control**: `JARVIS_APP_PASSWORD` (optional — unset keeps the
+    app open as before, so existing deployments aren't broken) gates
+    every page and API route except the login endpoint. Implemented as a
+    stateless signed-cookie session (`app/src/server/auth.ts`) rather
+    than a server-side session store, specifically so a login survives
+    Render spinning the free-tier service down when idle. See
+    `JARVIS/SECURITY.md` § Access control for the full design and
+    rationale (single shared password, no accounts — matches this
+    project's single-user scope).
 - **2026-09-13** — Gave JARVIS an explicit personality: the classic
   British-butler archetype (the same one Tony Stark's JARVIS uses) —
   composed, formal but warm, dry wit, addresses the user as "señor".

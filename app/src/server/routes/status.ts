@@ -14,6 +14,7 @@ export function statusRouter(core: JarvisCore): Router {
       geminiConfigured: Boolean(cfg.geminiApiKey),
       geminiModel: cfg.geminiModel,
       speechSynthesisConfigured: Boolean(cfg.elevenLabsApiKey && cfg.elevenLabsVoiceId),
+      authEnabled: Boolean(cfg.appPassword),
       vaultPath: cfg.vaultPath,
       system: outcome.result,
     });

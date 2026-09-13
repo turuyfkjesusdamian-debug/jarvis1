@@ -19,6 +19,10 @@ const envSchema = z.object({
   GEMINI_MODEL: z.string().default("gemini-3.5-flash"),
   ELEVENLABS_API_KEY: z.string().optional(),
   ELEVENLABS_VOICE_ID: z.string().optional(),
+  // When set, gates the entire app behind a single shared password (see
+  // JARVIS/SECURITY.md § Access control). Unset means the app stays open,
+  // as before — this is opt-in so existing deployments don't break.
+  JARVIS_APP_PASSWORD: z.string().optional(),
   JARVIS_VAULT_PATH: z.string().default(".."),
   JARVIS_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   JARVIS_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -34,6 +38,7 @@ export type JarvisConfig = {
   geminiModel: string;
   elevenLabsApiKey: string | undefined;
   elevenLabsVoiceId: string | undefined;
+  appPassword: string | undefined;
   vaultPath: string;
   logLevel: "debug" | "info" | "warn" | "error";
   env: "development" | "test" | "production";
@@ -55,6 +60,7 @@ function load(): JarvisConfig {
     geminiModel: env.GEMINI_MODEL,
     elevenLabsApiKey: env.ELEVENLABS_API_KEY,
     elevenLabsVoiceId: env.ELEVENLABS_VOICE_ID,
+    appPassword: env.JARVIS_APP_PASSWORD,
     vaultPath: path.resolve(appDir, env.JARVIS_VAULT_PATH),
     logLevel: env.JARVIS_LOG_LEVEL,
     env: env.JARVIS_ENV,

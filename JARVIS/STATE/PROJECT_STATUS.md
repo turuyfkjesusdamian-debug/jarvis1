@@ -12,13 +12,14 @@ First development session, completed in full through Phase 10 (hardening),
 plus same-day follow-ups: ElevenLabs speech output was added, then removed,
 then re-added; the UI was redesigned around an audio-reactive, drag-to-spin
 particle sphere; several text-mode bugs found via live user testing were
-fixed; and — the latest change — OpenAI was removed entirely (billing
-became a blocker for the user) in favor of a three-part split: the
-browser's own Web Speech API for listening, Google Gemini for
-general-intent text replies, and ElevenLabs for speech output (see
-`JARVIS/ARCHITECTURE.md` § Decisions for the full rationale). 97/97 tests
-pass (`cd app && npm test`), `npm run typecheck` and `npm run build` are
-clean.
+fixed; OpenAI was removed entirely (billing became a blocker for the user)
+in favor of a three-part split (browser Web Speech API for listening,
+Gemini for general-intent text, ElevenLabs for speech output); JARVIS was
+given an explicit British-butler personality; and — the latest change —
+the app became installable as a PWA with an optional password gate so it's
+usable only by the user it belongs to (see `JARVIS/ARCHITECTURE.md` §
+Decisions for the full rationale on each). 112/112 tests pass
+(`cd app && npm test`), `npm run typecheck` and `npm run build` are clean.
 
 ## What exists
 
@@ -68,8 +69,12 @@ clean.
   was added, removed, then re-added the same day; OpenAI was replaced
   last).
 - **Server** (`app/src/server/`): Express app serving the static UI plus
-  `/api/{status,chat,tools,tts}`. `/api/tools/:name` requires
-  `confirmed: true` in the body for destructive tools.
+  `/api/{status,chat,tools,tts,auth/login,auth/logout}`. `/api/tools/:name`
+  requires `confirmed: true` in the body for destructive tools. An
+  optional password gate (`server/auth.ts`, active when
+  `JARVIS_APP_PASSWORD` is set) sits in front of everything except the
+  login endpoint and PWA metadata — see `JARVIS/SECURITY.md` § Access
+  control.
 - **UI** (`app/public/`): a purple, audio-reactive particle sphere
   (`orb.js`, pure Canvas 2D, no dependencies) as the visual centerpiece —
   real amplitude from ElevenLabs's TTS audio (plus a lighter reaction to
@@ -80,7 +85,11 @@ clean.
   without any API key; voice mode adds mic transcription via
   `SpeechRecognition` and spoken replies via `/api/tts`, both optional
   and independently gated by browser support / `ELEVENLABS_*` config.
-- **Tests** (`app/tests/`, 97 tests / 17 files): indexer, retrieval,
+  Installable as a PWA (`manifest.json`, `sw.js`, purple orb icon set in
+  `public/icons/`) — "Add to Home Screen" gives it its own icon and a
+  full-screen, no-address-bar window. `login.html` is the gate page shown
+  when `JARVIS_APP_PASSWORD` is set and no valid session exists yet.
+- **Tests** (`app/tests/`, 112 tests / 18 files): indexer, retrieval,
   reader (incl. path-traversal rejection), both memory tiers + the
   persistence heuristic (incl. the question-vs-statement fix), every tool
   group, the registry's validation/permission/confirmation logic, intent
@@ -88,33 +97,37 @@ clean.
   flow (including a test that a note containing "ignore all previous
   instructions" is treated as inert data, per `JARVIS/SECURITY.md`, and
   tests for the conversational-reply path with/without a key and on
-  failure), and the Gemini + ElevenLabs clients with `fetch` mocked (no
-  network, no real API key needed — `vitest.config.ts` forces
-  `GEMINI_API_KEY`/`ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID` empty for
-  every test run regardless of the local `app/.env`).
+  failure), the Gemini + ElevenLabs clients with `fetch` mocked (no
+  network, no real API key needed), and the auth gate's session
+  signing/verification logic (`tests/server/auth.test.ts`) —
+  `vitest.config.ts` forces
+  `GEMINI_API_KEY`/`ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID`/`JARVIS_APP_PASSWORD`
+  empty for every test run regardless of the local `app/.env`.
 
 ## What's missing / next steps
 
-- **Render's environment variables still need updating for this
-  migration.** The deploy (`jarvis-12lx.onrender.com`) still has the old
-  `OPENAI_API_KEY`/`JARVIS_REALTIME_MODEL`/`JARVIS_TEXT_MODEL` variables
-  from the previous setup. They need to be replaced with `GEMINI_API_KEY`,
-  `GEMINI_MODEL=gemini-3.5-flash` (`ELEVENLABS_API_KEY`/
-  `ELEVENLABS_VOICE_ID` were already correct and can stay), then the
-  service redeployed, before the user can test the new flow on their
-  phone.
-- **Gemini was live-verified working from this sandbox** (unlike OpenAI,
-  `generativelanguage.googleapis.com` is not blocked by this sandbox's
-  network egress allowlist) — real conversational replies confirmed via
-  direct `curl` against a locally-run server. **ElevenLabs is still
-  blocked in this sandbox** (`api.elevenlabs.io` — confirmed via a live
-  403 "Host not in allowlist"), consistent with every prior finding; it
-  must be verified on Render instead.
-- **The browser Web Speech API voice loop has never been exercised with a
-  real microphone in this session** — only the orb's visuals were checked
-  with headless Chromium (screenshots, no console errors, no real speech
-  recognition). The user needs to test the mic button on their actual
-  phone/browser once Render's env vars are updated.
+- **Render's environment variables need `JARVIS_APP_PASSWORD` added** for
+  the new password gate to actually activate (`jarvis-12lx.onrender.com`
+  currently has none set, so the app is still open to anyone with the
+  link). The user needs to pick a password, add it on Render, redeploy,
+  then log in once on their phone — the session persists for a year.
+- **Gemini and the deterministic tool flows are confirmed working live on
+  Render** — the user tested "hola cómo estás" and "¿qué tengo hoy?" and
+  both worked as expected against the real deployment. **ElevenLabs speech
+  output failed live** with `402 paid_plan_required` because the chosen
+  voice was browsed from ElevenLabs' shared Voice Library, not a premade
+  voice in the account (see `JARVIS/ARCHITECTURE.md` § Decisions) — fixed
+  by switching `ELEVENLABS_VOICE_ID` to a premade voice id; needs a
+  live re-test on Render to confirm speech output now works end to end.
+- **The browser Web Speech API voice loop was exercised once live on
+  Render and worked** (the user spoke into the mic and got a correct
+  transcription + reply), but reliability across repeated use on the
+  user's actual phone/browser hasn't been confirmed yet.
+- **The PWA install flow has not been tested on the user's phone yet** —
+  manifest/icons/service worker were verified to be reachable and
+  well-formed from this sandbox, but "Add to Home Screen" actually
+  producing a proper full-screen app icon needs to be checked on a real
+  Android Chrome.
 - **Known, unchanged scope gap**: natural-language voice/text commands
   don't route to write-capable tools (`tasks.createTask`,
   `memory.saveMemory` via explicit command, etc.) beyond the existing

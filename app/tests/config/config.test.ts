@@ -88,4 +88,14 @@ describe("config", () => {
     const cfg = getConfig();
     expect(requireElevenLabsConfig(cfg)).toEqual({ apiKey: "sk_test", voiceId: "voice-1" });
   });
+
+  it("leaves the app open (appPassword undefined) when JARVIS_APP_PASSWORD is not set", () => {
+    delete process.env.JARVIS_APP_PASSWORD;
+    expect(getConfig().appPassword).toBeUndefined();
+  });
+
+  it("exposes JARVIS_APP_PASSWORD as appPassword when set", () => {
+    process.env.JARVIS_APP_PASSWORD = "correct-horse-battery-staple";
+    expect(getConfig().appPassword).toBe("correct-horse-battery-staple");
+  });
 });

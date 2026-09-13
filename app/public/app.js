@@ -19,6 +19,7 @@ const chatForm = document.getElementById("chat-form");
 const chatInput = document.getElementById("chat-input");
 const micButton = document.getElementById("mic-button");
 const configJsonEl = document.getElementById("config-json");
+const logoutButton = document.getElementById("logout-button");
 
 function setPill(el, text, level) {
   el.textContent = text;
@@ -127,6 +128,7 @@ async function refreshStatus() {
     const data = await res.json();
     configJsonEl.textContent = JSON.stringify(data, null, 2);
     speechSynthesisConfigured = Boolean(data.speechSynthesisConfigured);
+    logoutButton.hidden = !data.authEnabled;
     setPill(connStatusEl, "connection: ok", "ok");
     setPill(
       assistantStatusEl,
@@ -263,6 +265,20 @@ micButton.addEventListener("click", () => {
   if (voiceActive) stopVoice();
   else startVoice();
 });
+
+logoutButton.addEventListener("click", async () => {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } finally {
+    window.location.href = "/";
+  }
+});
+
+if ("serviceWorker" in navigator) {
+  // Registered purely so the browser treats JARVIS as an installable PWA —
+  // it does no offline caching (see public/sw.js).
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
 
 refreshStatus();
 setInterval(refreshStatus, 15000);
