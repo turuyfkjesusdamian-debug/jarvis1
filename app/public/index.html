@@ -4,46 +4,60 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>JARVIS</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23060310'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%23d8b4fe'/%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23a855f7' stroke-width='1.5'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header>
-    <h1>JARVIS</h1>
-    <div id="status-bar">
-      <span class="status-pill" id="conn-status">connection: unknown</span>
-      <span class="status-pill" id="mic-status">mic: idle</span>
-      <span class="status-pill" id="assistant-status">assistant: idle</span>
-    </div>
-  </header>
+  <div class="hud">
+    <header class="topbar">
+      <div class="brand">JARVIS</div>
+      <div id="status-bar">
+        <span class="status-pill" id="conn-status">connection: unknown</span>
+        <span class="status-pill" id="mic-status">mic: idle</span>
+        <span class="status-pill" id="assistant-status">assistant: idle</span>
+      </div>
+    </header>
 
-  <main>
-    <section id="conversation" aria-label="Conversation">
-      <p class="hint">Say or type something. Voice requires OPENAI_API_KEY configured server-side.</p>
-    </section>
+    <div class="hud-bar hud-bar-top" aria-hidden="true"></div>
 
-    <section id="tool-activity" aria-label="Tool activity">
-      <h2>Tool activity</h2>
-      <ul id="tool-log"></ul>
-    </section>
+    <main class="stage">
+      <div class="orb-wrap">
+        <canvas id="orb-canvas"></canvas>
+      </div>
 
-    <section id="errors" aria-label="Errors" hidden>
-      <h2>Errors</h2>
-      <ul id="error-log"></ul>
-    </section>
-  </main>
+      <section id="conversation" aria-label="Conversation">
+        <p class="hint">Say or type something. Voice requires OPENAI_API_KEY configured server-side.</p>
+      </section>
+    </main>
 
-  <footer>
-    <form id="chat-form">
-      <input id="chat-input" type="text" placeholder="Type a message (text-mode fallback)" autocomplete="off" />
-      <button type="submit">Send</button>
-    </form>
-    <button id="mic-button" type="button">🎤 Start voice</button>
-    <details id="config-panel">
-      <summary>Configuration</summary>
-      <pre id="config-json">loading…</pre>
-    </details>
-  </footer>
+    <div class="hud-bar hud-bar-bottom" aria-hidden="true"></div>
 
+    <footer>
+      <form id="chat-form">
+        <input id="chat-input" type="text" placeholder="Type a message (text-mode fallback)" autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+      <button id="mic-button" type="button">🎤 Start voice</button>
+
+      <details id="panel-details">
+        <summary>Details</summary>
+        <section id="tool-activity" aria-label="Tool activity">
+          <h2>Tool activity</h2>
+          <ul id="tool-log"></ul>
+        </section>
+        <section id="errors" aria-label="Errors" hidden>
+          <h2>Errors</h2>
+          <ul id="error-log"></ul>
+        </section>
+        <details id="config-panel">
+          <summary>Configuration</summary>
+          <pre id="config-json">loading…</pre>
+        </details>
+      </details>
+    </footer>
+  </div>
+
+  <script src="orb.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

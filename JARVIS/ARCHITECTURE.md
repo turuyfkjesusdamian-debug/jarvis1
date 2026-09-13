@@ -150,6 +150,17 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-13** — Redesigned `app/public/` around a purple, audio-reactive
+  particle-sphere visual (`app/public/orb.js`, pure Canvas 2D, no
+  dependencies) instead of a plain status/log page. Real amplitude from
+  whatever JARVIS is currently speaking (ElevenLabs TTS audio, or OpenAI's
+  own Realtime audio track when ElevenLabs isn't configured) via Web Audio
+  `AnalyserNode`s drives the sphere's scale/brightness/rotation speed each
+  frame — see the `driveOrb()` loop in `app/public/app.js`. The user's mic
+  input contributes a smaller, secondary reaction so the sphere feels
+  alive while listening too. Verified visually with headless Chromium
+  (idle vs. simulated full-energy render) before shipping, since this
+  can't be checked any other way in this environment.
 - **2026-09-13** — The text-chat fallback's "general" intent (small talk,
   open-ended questions — not tasks/schedule/notes/memory, which stay
   deterministic) now calls a real Chat Completions model

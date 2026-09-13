@@ -9,6 +9,8 @@
 
 let speechSynthesisConfigured = false;
 
+const orb = createJarvisOrb(document.getElementById("orb-canvas"));
+
 const conversationEl = document.getElementById("conversation");
 const toolLogEl = document.getElementById("tool-log");
 const errorSection = document.getElementById("errors");
@@ -49,10 +51,66 @@ function logError(message) {
 
 const ttsAudioEl = new Audio();
 
+// --- Orb audio reactivity: real amplitude from whatever JARVIS is
+// currently outputting (ElevenLabs TTS, or OpenAI's own Realtime audio),
+// plus a lighter reaction to the user's own mic input while listening.
+// The orb itself just renders whatever energy value it's given each
+// frame — see orb.js.
+
+let audioCtx = null;
+let ttsAnalyser = null;
+let ttsSource = null;
+let voiceAnalyser = null;
+let micAnalyser = null;
+
+function ensureAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
+}
+
+/** createMediaElementSource can only be called once per <audio> element — set up lazily, once. */
+function ensureTtsAnalyser() {
+  const ctx = ensureAudioContext();
+  if (!ttsSource) {
+    ttsSource = ctx.createMediaElementSource(ttsAudioEl);
+    ttsAnalyser = ctx.createAnalyser();
+    ttsAnalyser.fftSize = 256;
+    // Route back to the speakers — createMediaElementSource otherwise
+    // silently captures the audio into the Web Audio graph instead of
+    // letting it play normally.
+    ttsSource.connect(ttsAnalyser);
+    ttsAnalyser.connect(ctx.destination);
+  }
+}
+
+function analyserEnergy(analyser) {
+  if (!analyser) return 0;
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(data);
+  let sum = 0;
+  for (const v of data) sum += v;
+  return sum / data.length / 255;
+}
+
+function driveOrb() {
+  const ttsEnergy = !ttsAudioEl.paused ? analyserEnergy(ttsAnalyser) : 0;
+  const voiceEnergy = analyserEnergy(voiceAnalyser);
+  const micEnergy = analyserEnergy(micAnalyser) * 0.45; // secondary, dampened "listening" cue
+  orb.setEnergy(Math.max(ttsEnergy, voiceEnergy, micEnergy));
+  requestAnimationFrame(driveOrb);
+}
+requestAnimationFrame(driveOrb);
+
 /** Fetches ElevenLabs-synthesized speech for text and plays it. No-op if not configured. */
 async function speak(text) {
   if (!speechSynthesisConfigured || !text) return;
   try {
+    ensureTtsAnalyser();
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -92,6 +150,7 @@ async function refreshStatus() {
 
 chatForm.addEventListener("submit", async (e) => {
   e.preventDefault();
+  ensureAudioContext(); // must happen synchronously within the user gesture for autoplay to work
   const message = chatInput.value.trim();
   if (!message) return;
   chatInput.value = "";
@@ -204,9 +263,23 @@ async function startVoice() {
       audioEl.autoplay = true;
       audioEl.srcObject = e.streams[0];
       document.body.appendChild(audioEl);
+
+      const ctx = ensureAudioContext();
+      const source = ctx.createMediaStreamSource(e.streams[0]);
+      voiceAnalyser = ctx.createAnalyser();
+      voiceAnalyser.fftSize = 256;
+      source.connect(voiceAnalyser); // analysis only — audioEl already handles playback
     };
     for (const track of micStream.getTracks()) {
       peerConnection.addTrack(track, micStream);
+    }
+
+    {
+      const ctx = ensureAudioContext();
+      const micSource = ctx.createMediaStreamSource(micStream);
+      micAnalyser = ctx.createAnalyser();
+      micAnalyser.fftSize = 256;
+      micSource.connect(micAnalyser); // analysis only, never routed to destination
     }
 
     dataChannel = peerConnection.createDataChannel("oai-events");
@@ -228,6 +301,7 @@ async function startVoice() {
 
     voiceActive = true;
     micButton.textContent = "🎤 Stop voice";
+    micButton.classList.add("listening");
     setPill(assistantStatusEl, "assistant: listening", "ok");
   } catch (err) {
     setPill(micStatusEl, "mic: error", "error");
@@ -239,16 +313,20 @@ async function startVoice() {
 function stopVoice() {
   voiceActive = false;
   micButton.textContent = "🎤 Start voice";
+  micButton.classList.remove("listening");
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
   if (peerConnection) peerConnection.close();
   micStream = null;
   peerConnection = null;
   dataChannel = null;
+  voiceAnalyser = null;
+  micAnalyser = null;
   setPill(micStatusEl, "mic: idle");
   setPill(assistantStatusEl, "assistant: idle");
 }
 
 micButton.addEventListener("click", () => {
+  ensureAudioContext();
   if (voiceActive) stopVoice();
   else startVoice();
 });
