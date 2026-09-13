@@ -16,6 +16,7 @@ describe("config", () => {
   it("applies safe defaults when nothing is set", () => {
     delete process.env.JARVIS_LOG_LEVEL;
     delete process.env.JARVIS_PORT;
+    delete process.env.PORT;
     delete process.env.JARVIS_ENV;
     delete process.env.JARVIS_REALTIME_MODEL;
     delete process.env.OPENAI_API_KEY;
@@ -26,6 +27,18 @@ describe("config", () => {
     expect(cfg.port).toBe(3939);
     expect(cfg.realtimeModel).toBe("gpt-realtime");
     expect(cfg.openaiApiKey).toBeUndefined();
+  });
+
+  it("uses JARVIS_PORT when PORT is not set", () => {
+    delete process.env.PORT;
+    process.env.JARVIS_PORT = "4000";
+    expect(getConfig().port).toBe(4000);
+  });
+
+  it("prefers the platform-injected PORT over JARVIS_PORT", () => {
+    process.env.JARVIS_PORT = "4000";
+    process.env.PORT = "10000";
+    expect(getConfig().port).toBe(10000);
   });
 
   it("never requires OPENAI_API_KEY to load", () => {

@@ -24,7 +24,8 @@ There is no fourth layer. Nothing is ever read from the vault for secrets.
 | `JARVIS_VAULT_PATH`    | no       | repo root        | Absolute or relative path to the Obsidian vault root. Defaults to the repository root since the vault and app are co-located. |
 | `JARVIS_LOG_LEVEL`     | no       | `info`           | One of `debug`, `info`, `warn`, `error`. |
 | `JARVIS_ENV`           | no       | `development`    | One of `development`, `test`, `production`. Controls things like whether `.env` is required. |
-| `JARVIS_PORT`          | no       | `3939`           | HTTP port for the local server (UI + API). |
+| `JARVIS_PORT`          | no       | `3939`           | HTTP port for the local server (UI + API). Ignored if `PORT` is set. |
+| `PORT`                 | no       | —                | Standard variable injected by hosting platforms (Render, Heroku, Railway, ...) to assign the port at deploy time. Takes priority over `JARVIS_PORT` when present — don't set this yourself locally. |
 | `JARVIS_REALTIME_MODEL`| no       | `gpt-realtime`   | Model id passed to the Realtime API session. |
 
 ## Rules
