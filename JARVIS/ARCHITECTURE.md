@@ -161,6 +161,48 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-13** — Started a native Android companion app (`android/`), at
+  the user's request, for a voice command that works without manually
+  opening the web app first. A PWA cannot listen in the background once
+  closed — that's a browser/OS restriction, not something JARVIS can work
+  around — so a real always-listening wake word needs a native app with a
+  foreground service. Key decisions:
+  - **This sandbox cannot build Android apps.** `dl.google.com` (where the
+    Android SDK platform/build-tools live) is blocked by this
+    environment's network egress allowlist — confirmed live (`gradle
+    tasks` fails resolving the Android Gradle Plugin, immediately after
+    successfully downloading the Gradle distribution itself from
+    `services.gradle.org`, which is allowed). Building locally, even just
+    to sanity-check, is not possible here.
+  - **Workaround: GitHub Actions builds the APK instead**
+    (`.github/workflows/android-build.yml`, triggered on any push touching
+    `android/`) — GitHub's runners have unrestricted internet access and
+    the Android SDK preinstalled. The resulting signed APK is uploaded as
+    a workflow artifact; fetched and handed to the user directly as a
+    file, since they can't navigate the GitHub Actions UI comfortably.
+  - **A committed release keystore** (`android/jarvis-release.keystore`,
+    password in `android/gradle.properties`) signs every build — debug and
+    release alike — so a new APK always installs over the old one instead
+    of requiring an uninstall first. Not treated as a real secret: this is
+    a single-user, sideloaded app that's never published and never
+    auto-updates itself, matching the risk posture already established for
+    `JARVIS_APP_PASSWORD` (see `JARVIS/SECURITY.md` § Access control).
+  - **Staged build-out, not one big leap**: since there's no way to test
+    this app interactively before shipping it (no device/emulator
+    available to Claude), milestone 1 is deliberately minimal — a login
+    screen plus a "test message" button that exercises login, `/api/chat`,
+    and `/api/tts` end to end — to validate the whole pipeline (GitHub
+    Actions build → signed APK → sideload → talks to the real server)
+    before adding the harder part (milestone 2: a foreground service doing
+    continuous speech recognition for a wake word). The app reuses the
+    exact same backend the web UI uses — no server-side changes were
+    needed, since CORS doesn't apply to native HTTP clients.
+  - **Known risk flagged to the user up front**: the user's phone is
+    Xiaomi/MIUI, which aggressively kills background services unless the
+    user manually disables battery optimization and enables "autostart"
+    for the app — this will need to be walked through once milestone 2
+    (the background listener) exists, and is a likely source of "it just
+    stopped working" reports that aren't actually bugs in the app.
 - **2026-09-13** — Made JARVIS Spanish-only end to end, at the user's
   request. Previously the persona said "reply in whichever language the
   user is speaking" (a multilingual default); changed to "always reply in

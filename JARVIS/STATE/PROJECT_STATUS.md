@@ -15,11 +15,16 @@ particle sphere; several text-mode bugs found via live user testing were
 fixed; OpenAI was removed entirely (billing became a blocker for the user)
 in favor of a three-part split (browser Web Speech API for listening,
 Gemini for general-intent text, ElevenLabs for speech output); JARVIS was
-given an explicit British-butler personality; and — the latest change —
-the app became installable as a PWA with an optional password gate so it's
-usable only by the user it belongs to (see `JARVIS/ARCHITECTURE.md` §
-Decisions for the full rationale on each). 112/112 tests pass
-(`cd app && npm test`), `npm run typecheck` and `npm run build` are clean.
+given an explicit British-butler personality; the app became installable
+as a PWA with an optional password gate so it's usable only by the user it
+belongs to; and — in progress — a native Android companion app (`android/`)
+was started for a voice command that works without opening the web app
+first (see `JARVIS/ARCHITECTURE.md` § Decisions for the full rationale on
+each, including why this sandbox can't build it directly and builds it via
+GitHub Actions instead). 112/112 web-app tests pass (`cd app && npm test`),
+`npm run typecheck` and `npm run build` are clean. The Android app has no
+automated tests yet — it can't be exercised in this environment at all;
+see "What's missing" below.
 
 ## What exists
 
@@ -103,9 +108,29 @@ Decisions for the full rationale on each). 112/112 tests pass
   `vitest.config.ts` forces
   `GEMINI_API_KEY`/`ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID`/`JARVIS_APP_PASSWORD`
   empty for every test run regardless of the local `app/.env`.
+- **Android companion app** (`android/`, milestone 1 of 2 — see
+  `JARVIS/ARCHITECTURE.md` § Decisions): a Kotlin app with a login screen
+  (server URL + `JARVIS_APP_PASSWORD`) and a "test message" button that
+  exercises `/api/auth/login` → `/api/chat` → `/api/tts` end to end,
+  reusing the exact same backend the web UI talks to. Built by
+  `.github/workflows/android-build.yml` on GitHub Actions (this sandbox
+  can't reach the Android SDK servers to build it directly) and handed to
+  the user as a sideloadable APK, signed with a committed keystore
+  (`android/jarvis-release.keystore`) so future updates install over the
+  old version. Not yet the actual voice-command feature — that's
+  milestone 2 (a foreground service doing continuous speech recognition
+  for a wake word), gated on confirming this milestone works on the
+  user's real phone first.
 
 ## What's missing / next steps
 
+- **Android app milestone 1 needs a real-device test.** The CI build
+  (GitHub Actions) needs to be confirmed producing an installable APK
+  (unverified — first push not yet run through CI as of this writing),
+  then the user needs to sideload it, log in, and confirm the test
+  message round-trips through chat + speech synthesis correctly. Only
+  after that should milestone 2 (the background wake-word listener,
+  including the Xiaomi/MIUI battery-optimization dance) be attempted.
 - **Render's environment variables need `JARVIS_APP_PASSWORD` added** for
   the new password gate to actually activate (`jarvis-12lx.onrender.com`
   currently has none set, so the app is still open to anyone with the

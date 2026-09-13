@@ -20,3 +20,9 @@ app/*.log
 # OS / editor
 .DS_Store
 *.swp
+
+# Android build outputs / machine-specific SDK path (never the wrapper or
+# the checked-in signing keystore — see JARVIS/ARCHITECTURE.md § Decisions)
+android/local.properties
+android/**/build/
+android/.gradle/
