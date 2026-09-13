@@ -5,8 +5,6 @@ import type { JarvisConfig } from "../../src/config/index.js";
 function makeConfig(overrides: Partial<JarvisConfig> = {}): JarvisConfig {
   return {
     openaiApiKey: "sk-test",
-    elevenLabsApiKey: undefined,
-    elevenLabsVoiceId: undefined,
     vaultPath: "/tmp/vault",
     logLevel: "error",
     env: "test",

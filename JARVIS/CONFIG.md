@@ -19,8 +19,6 @@ There is no fourth layer. Nothing is ever read from the vault for secrets.
 | Variable              | Required | Default          | Purpose |
 |------------------------|----------|------------------|---------|
 | `OPENAI_API_KEY`       | yes (voice) | —             | Server-side only. Used to mint ephemeral Realtime session tokens. Never sent to the browser or logged. |
-| `ELEVENLABS_API_KEY`   | no (speech) | —             | Server-side only. When set together with `ELEVENLABS_VOICE_ID`, JARVIS speaks via ElevenLabs instead of an OpenAI Realtime built-in voice. Never sent to the browser or logged. |
-| `ELEVENLABS_VOICE_ID`  | no (speech) | —             | The ElevenLabs voice to speak with. Not a secret by itself, but only meaningful together with `ELEVENLABS_API_KEY`. |
 | `JARVIS_VAULT_PATH`    | no       | repo root        | Absolute or relative path to the Obsidian vault root. Defaults to the repository root since the vault and app are co-located. |
 | `JARVIS_LOG_LEVEL`     | no       | `info`           | One of `debug`, `info`, `warn`, `error`. |
 | `JARVIS_ENV`           | no       | `development`    | One of `development`, `test`, `production`. Controls things like whether `.env` is required. |
@@ -36,12 +34,10 @@ There is no fourth layer. Nothing is ever read from the vault for secrets.
   app never starts in a half-configured state.
 - `OPENAI_API_KEY` is read only inside `app/src/voice/` and
   `app/src/server/routes/realtime.ts`. No other module should import it.
-- `ELEVENLABS_API_KEY` is read only inside `app/src/voice/elevenLabsClient.ts`
-  (via `requireElevenLabsConfig`). No other module should import it.
 - Never add a new secret-like variable without updating `JARVIS/SECURITY.md`
   and `.gitignore` if it implies a new file.
 - Tests never require `OPENAI_API_KEY` — anything that needs it is mocked
   (see `JARVIS/DEVELOPMENT.md` § Tests). `app/vitest.config.ts` forces
-  `OPENAI_API_KEY`/`ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID` to empty for
-  every test run regardless of what's in a developer's local `app/.env`,
-  so the suite can't accidentally make a real network call with a real key.
+  `OPENAI_API_KEY` to empty for every test run regardless of what's in a
+  developer's local `app/.env`, so the suite can't accidentally make a
+  real network call with a real key.

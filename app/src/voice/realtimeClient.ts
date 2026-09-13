@@ -29,7 +29,6 @@ export async function createEphemeralRealtimeSession(
 ): Promise<EphemeralSessionResponse> {
   const apiKey = requireOpenAiKey(cfg);
   const tools = toolsForModel(registry);
-  const useElevenLabsSpeech = Boolean(cfg.elevenLabsApiKey && cfg.elevenLabsVoiceId);
 
   const response = await fetch(OPENAI_REALTIME_SESSIONS_URL, {
     method: "POST",
@@ -41,13 +40,7 @@ export async function createEphemeralRealtimeSession(
       model: cfg.realtimeModel,
       instructions: PERSONA_SYSTEM_PROMPT,
       tools,
-      // Text-only output: OpenAI handles listening (input audio
-      // transcription) and reasoning/tool-calling, but never synthesizes
-      // audio itself. When ElevenLabs is configured, the browser sends the
-      // finished response text to /api/tts and speaks that instead — see
-      // JARVIS/ARCHITECTURE.md § Decisions. Audio input (the mic) is
-      // unaffected; this only controls the response modality.
-      modalities: useElevenLabsSpeech ? ["text"] : ["audio", "text"],
+      modalities: ["audio", "text"],
     }),
   });
 
@@ -70,6 +63,5 @@ export async function createEphemeralRealtimeSession(
     expiresAt: json.client_secret?.expires_at ?? null,
     model: cfg.realtimeModel,
     tools,
-    useElevenLabsSpeech,
   };
 }

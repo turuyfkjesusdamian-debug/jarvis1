@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { getConfig, resetConfigForTests, requireOpenAiKey, requireElevenLabsConfig } from "../../src/config/index.js";
+import { getConfig, resetConfigForTests, requireOpenAiKey } from "../../src/config/index.js";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -68,23 +68,5 @@ describe("config", () => {
     const cfg = getConfig();
     expect(cfg.vaultPath.endsWith("some-vault")).toBe(true);
     expect(cfg.vaultPath).not.toContain("..");
-  });
-
-  it("requireElevenLabsConfig throws when either the key or voice id is missing", () => {
-    delete process.env.ELEVENLABS_API_KEY;
-    delete process.env.ELEVENLABS_VOICE_ID;
-    expect(() => requireElevenLabsConfig(getConfig())).toThrow(/ELEVENLABS_API_KEY/);
-
-    resetConfigForTests();
-    process.env.ELEVENLABS_API_KEY = "sk_test";
-    delete process.env.ELEVENLABS_VOICE_ID;
-    expect(() => requireElevenLabsConfig(getConfig())).toThrow(/ELEVENLABS_VOICE_ID/);
-  });
-
-  it("requireElevenLabsConfig returns both values when present", () => {
-    process.env.ELEVENLABS_API_KEY = "sk_test";
-    process.env.ELEVENLABS_VOICE_ID = "voice-1";
-    const cfg = getConfig();
-    expect(requireElevenLabsConfig(cfg)).toEqual({ apiKey: "sk_test", voiceId: "voice-1" });
   });
 });

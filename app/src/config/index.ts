@@ -13,8 +13,6 @@ dotenv.config({ path: path.join(appDir, ".env"), quiet: true });
 
 const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
-  ELEVENLABS_API_KEY: z.string().optional(),
-  ELEVENLABS_VOICE_ID: z.string().optional(),
   JARVIS_VAULT_PATH: z.string().default(".."),
   JARVIS_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   JARVIS_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -32,8 +30,6 @@ const envSchema = z.object({
 
 export type JarvisConfig = {
   openaiApiKey: string | undefined;
-  elevenLabsApiKey: string | undefined;
-  elevenLabsVoiceId: string | undefined;
   vaultPath: string;
   logLevel: "debug" | "info" | "warn" | "error";
   env: "development" | "test" | "production";
@@ -54,8 +50,6 @@ function load(): JarvisConfig {
   const env = parsed.data;
   return {
     openaiApiKey: env.OPENAI_API_KEY,
-    elevenLabsApiKey: env.ELEVENLABS_API_KEY,
-    elevenLabsVoiceId: env.ELEVENLABS_VOICE_ID,
     vaultPath: path.resolve(appDir, env.JARVIS_VAULT_PATH),
     logLevel: env.JARVIS_LOG_LEVEL,
     env: env.JARVIS_ENV,
@@ -87,19 +81,4 @@ export function requireOpenAiKey(cfg: JarvisConfig): string {
     );
   }
   return cfg.openaiApiKey;
-}
-
-/** Fails fast if speech synthesis is used without ElevenLabs configured. */
-export function requireElevenLabsConfig(cfg: JarvisConfig): { apiKey: string; voiceId: string } {
-  if (!cfg.elevenLabsApiKey) {
-    throw new Error(
-      "ELEVENLABS_API_KEY is not set. Speech synthesis requires it — see JARVIS/CONFIG.md."
-    );
-  }
-  if (!cfg.elevenLabsVoiceId) {
-    throw new Error(
-      "ELEVENLABS_VOICE_ID is not set. Speech synthesis requires it — see JARVIS/CONFIG.md."
-    );
-  }
-  return { apiKey: cfg.elevenLabsApiKey, voiceId: cfg.elevenLabsVoiceId };
 }

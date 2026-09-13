@@ -16,6 +16,20 @@ function createJarvisOrb(canvas) {
   let t = 0;
   let raf = null;
 
+  // Drag-to-spin: horizontal drag adds extra spin on top of the automatic
+  // rotation, vertical drag tilts it. Releasing keeps it spinning with
+  // decaying velocity (inertia) instead of stopping dead.
+  let manualRotY = 0;
+  let manualRotX = 0;
+  let velY = 0;
+  let velX = 0;
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  const DRAG_SENSITIVITY = 0.012;
+  const MAX_TILT = 1.3;
+  const INERTIA_DAMPING = 0.94;
+
   const RINGS = [
     { radius: 0.5, tiltX: 0.95, tiltZ: 0.2, count: 60, speed: 0.55, dir: 1 },
     { radius: 0.68, tiltX: 0.3, tiltZ: -0.55, count: 75, speed: 0.4, dir: -1 },
@@ -64,10 +78,59 @@ function createJarvisOrb(canvas) {
     return { x: p.x * c + p.z * s, y: p.y, z: -p.x * s + p.z * c };
   }
 
+  function onPointerDown(e) {
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    velY = 0;
+    velX = 0;
+    canvas.setPointerCapture(e.pointerId);
+  }
+
+  function onPointerMove(e) {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    velY = dx * DRAG_SENSITIVITY;
+    velX = -dy * DRAG_SENSITIVITY;
+    manualRotY += velY;
+    manualRotX = Math.max(-MAX_TILT, Math.min(MAX_TILT, manualRotX + velX));
+  }
+
+  function onPointerUp(e) {
+    dragging = false;
+    try {
+      canvas.releasePointerCapture(e.pointerId);
+    } catch {
+      // already released — harmless
+    }
+  }
+
+  canvas.style.touchAction = "none";
+  canvas.style.cursor = "grab";
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerUp);
+
   function frame() {
     smoothEnergy += (targetEnergy - smoothEnergy) * 0.12;
     const e = smoothEnergy;
     t += 0.006 + e * 0.012;
+
+    if (!dragging) {
+      // Inertia: keep coasting on the last drag velocity, decaying to a stop.
+      manualRotY += velY;
+      manualRotX = Math.max(-MAX_TILT, Math.min(MAX_TILT, manualRotX + velX));
+      velY *= INERTIA_DAMPING;
+      velX *= INERTIA_DAMPING;
+      if (Math.abs(velY) < 0.00005) velY = 0;
+      if (Math.abs(velX) < 0.00005) velX = 0;
+      // Gently settle the tilt back toward level so it doesn't stay stuck sideways.
+      manualRotX *= 0.985;
+    }
 
     // Low-alpha fill instead of a hard clear leaves faint motion trails.
     ctx.fillStyle = `rgba(4, 2, 12, ${0.32 - e * 0.08})`;
@@ -81,7 +144,7 @@ function createJarvisOrb(canvas) {
 
     const rayCount = 10;
     for (let i = 0; i < rayCount; i++) {
-      const a = (i / rayCount) * Math.PI * 2 + t * 0.15;
+      const a = (i / rayCount) * Math.PI * 2 + t * 0.15 + manualRotY;
       const len = baseRadius * (1.4 + e * 1.3);
       const grad = ctx.createLinearGradient(cx, cy, cx + Math.cos(a) * len, cy + Math.sin(a) * len);
       grad.addColorStop(0, `rgba(216,180,254,${0.16 + e * 0.28})`);
@@ -101,7 +164,8 @@ function createJarvisOrb(canvas) {
       let pos = { x: Math.cos(angle) * r, y: Math.sin(angle) * r, z: 0 };
       pos = rotateX(pos, ring.tiltX);
       pos = rotateZ(pos, ring.tiltZ);
-      pos = rotateY(pos, globalRot);
+      pos = rotateX(pos, manualRotX);
+      pos = rotateY(pos, globalRot + manualRotY);
 
       const perspective = focal / (focal + pos.z);
       const sx = cx + pos.x * perspective;

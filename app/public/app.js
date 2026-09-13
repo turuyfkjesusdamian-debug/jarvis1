@@ -1,13 +1,6 @@
 // Minimal JARVIS web UI: text-mode chat (always available) + voice mode
 // (OpenAI Realtime over WebRTC, requires OPENAI_API_KEY configured
 // server-side). See JARVIS/ARCHITECTURE.md for the overall data flow.
-//
-// Speech output: when ElevenLabs is configured server-side, the Realtime
-// session is created text-only (see voice/realtimeClient.ts) and this
-// file fetches synthesized audio from /api/tts for each finished response
-// instead of playing OpenAI's own voice.
-
-let speechSynthesisConfigured = false;
 
 const orb = createJarvisOrb(document.getElementById("orb-canvas"));
 
@@ -49,17 +42,13 @@ function logError(message) {
   errorLogEl.prepend(li);
 }
 
-const ttsAudioEl = new Audio();
-
-// --- Orb audio reactivity: real amplitude from whatever JARVIS is
-// currently outputting (ElevenLabs TTS, or OpenAI's own Realtime audio),
-// plus a lighter reaction to the user's own mic input while listening.
-// The orb itself just renders whatever energy value it's given each
-// frame — see orb.js.
+// --- Orb audio reactivity: real amplitude from OpenAI's own Realtime
+// voice output during a voice session, plus a lighter reaction to the
+// user's own mic input while listening. The orb just renders whatever
+// energy value it's given each frame — see orb.js. Text-mode chat has no
+// audio output, so it doesn't drive the orb.
 
 let audioCtx = null;
-let ttsAnalyser = null;
-let ttsSource = null;
 let voiceAnalyser = null;
 let micAnalyser = null;
 
@@ -73,21 +62,6 @@ function ensureAudioContext() {
   return audioCtx;
 }
 
-/** createMediaElementSource can only be called once per <audio> element — set up lazily, once. */
-function ensureTtsAnalyser() {
-  const ctx = ensureAudioContext();
-  if (!ttsSource) {
-    ttsSource = ctx.createMediaElementSource(ttsAudioEl);
-    ttsAnalyser = ctx.createAnalyser();
-    ttsAnalyser.fftSize = 256;
-    // Route back to the speakers — createMediaElementSource otherwise
-    // silently captures the audio into the Web Audio graph instead of
-    // letting it play normally.
-    ttsSource.connect(ttsAnalyser);
-    ttsAnalyser.connect(ctx.destination);
-  }
-}
-
 function analyserEnergy(analyser) {
   if (!analyser) return 0;
   const data = new Uint8Array(analyser.frequencyBinCount);
@@ -98,42 +72,18 @@ function analyserEnergy(analyser) {
 }
 
 function driveOrb() {
-  const ttsEnergy = !ttsAudioEl.paused ? analyserEnergy(ttsAnalyser) : 0;
   const voiceEnergy = analyserEnergy(voiceAnalyser);
   const micEnergy = analyserEnergy(micAnalyser) * 0.45; // secondary, dampened "listening" cue
-  orb.setEnergy(Math.max(ttsEnergy, voiceEnergy, micEnergy));
+  orb.setEnergy(Math.max(voiceEnergy, micEnergy));
   requestAnimationFrame(driveOrb);
 }
 requestAnimationFrame(driveOrb);
-
-/** Fetches ElevenLabs-synthesized speech for text and plays it. No-op if not configured. */
-async function speak(text) {
-  if (!speechSynthesisConfigured || !text) return;
-  try {
-    ensureTtsAnalyser();
-    const res = await fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || "TTS request failed");
-    }
-    const blob = await res.blob();
-    ttsAudioEl.src = URL.createObjectURL(blob);
-    await ttsAudioEl.play();
-  } catch (err) {
-    logError(`Speech synthesis failed: ${err}`);
-  }
-}
 
 async function refreshStatus() {
   try {
     const res = await fetch("/api/status");
     const data = await res.json();
     configJsonEl.textContent = JSON.stringify(data, null, 2);
-    speechSynthesisConfigured = Boolean(data.speechSynthesisConfigured);
     setPill(connStatusEl, "connection: ok", "ok");
     setPill(
       assistantStatusEl,
@@ -150,7 +100,6 @@ async function refreshStatus() {
 
 chatForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  ensureAudioContext(); // must happen synchronously within the user gesture for autoplay to work
   const message = chatInput.value.trim();
   if (!message) return;
   chatInput.value = "";
@@ -168,7 +117,6 @@ chatForm.addEventListener("submit", async (e) => {
       logTool(call.name, call.result?.ok);
     }
     addTurn("assistant", data.reply);
-    speak(data.reply);
   } catch (err) {
     logError(`Chat failed: ${err}`);
   }
@@ -227,15 +175,7 @@ function handleRealtimeEvent(event) {
       if (event.transcript) addTurn("user", event.transcript);
       break;
     case "response.audio_transcript.done":
-      // Only fires when OpenAI itself is generating audio (ElevenLabs not configured).
       if (event.transcript) addTurn("assistant", event.transcript);
-      break;
-    case "response.text.done":
-      // Fires instead of the above when the session is text-only (ElevenLabs speaks it).
-      if (event.text) {
-        addTurn("assistant", event.text);
-        speak(event.text);
-      }
       break;
     case "error":
       logError(event.error?.message || "Realtime error");
@@ -256,8 +196,6 @@ async function startVoice() {
     setPill(micStatusEl, "mic: live", "ok");
 
     peerConnection = new RTCPeerConnection();
-    // Only fires when the session is audio+text (ElevenLabs not configured) —
-    // OpenAI won't send an audio track at all for a text-only session.
     peerConnection.ontrack = (e) => {
       const audioEl = document.createElement("audio");
       audioEl.autoplay = true;

@@ -150,17 +150,28 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-13** — Removed the ElevenLabs speech-output integration
+  (added and reverted the same day, see the two entries below) at the
+  user's request. Voice mode is back to a single provider end-to-end:
+  OpenAI Realtime handles listening, reasoning, tool-calling, *and*
+  speech output via its own built-in voice. The text-chat fallback no
+  longer speaks its replies at all (there is no more TTS path for it).
+  `ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID` config, `voice/elevenLabsClient.ts`,
+  and `server/routes/tts.ts` are gone; the orb's audio reactivity (below)
+  now only listens to OpenAI's own Realtime audio track and the mic.
 - **2026-09-13** — Redesigned `app/public/` around a purple, audio-reactive
   particle-sphere visual (`app/public/orb.js`, pure Canvas 2D, no
   dependencies) instead of a plain status/log page. Real amplitude from
-  whatever JARVIS is currently speaking (ElevenLabs TTS audio, or OpenAI's
-  own Realtime audio track when ElevenLabs isn't configured) via Web Audio
-  `AnalyserNode`s drives the sphere's scale/brightness/rotation speed each
-  frame — see the `driveOrb()` loop in `app/public/app.js`. The user's mic
-  input contributes a smaller, secondary reaction so the sphere feels
-  alive while listening too. Verified visually with headless Chromium
-  (idle vs. simulated full-energy render) before shipping, since this
-  can't be checked any other way in this environment.
+  whatever JARVIS is currently speaking, via a Web Audio `AnalyserNode` on
+  OpenAI's own Realtime audio track, drives the sphere's
+  scale/brightness/rotation speed each frame — see the `driveOrb()` loop
+  in `app/public/app.js`. The user's mic input contributes a smaller,
+  secondary reaction so the sphere feels alive while listening too. Also
+  supports drag-to-spin (pointer events on the canvas add manual rotation
+  on top of the automatic spin, with inertia on release). Verified
+  visually with headless Chromium (idle vs. simulated full-energy render,
+  and a simulated drag) before shipping, since this can't be checked any
+  other way in this environment.
 - **2026-09-13** — The text-chat fallback's "general" intent (small talk,
   open-ended questions — not tasks/schedule/notes/memory, which stay
   deterministic) now calls a real Chat Completions model

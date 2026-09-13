@@ -57,10 +57,6 @@ hard constraints for any change.
 - **Ephemeral realtime tokens only.** The browser client only ever
   receives a short-lived Realtime session token minted by the server
   (`server/routes/realtime.ts`), never the long-lived `OPENAI_API_KEY`.
-- **ElevenLabs key never reaches the browser either.** `POST /api/tts`
-  (`server/routes/tts.ts`) proxies text to ElevenLabs server-side using
-  `ELEVENLABS_API_KEY` and returns only the resulting audio bytes — the
-  browser sends text, gets audio back, never sees the key.
 - **Don't destroy user data.** Never overwrite or delete a vault file
   without going through the appropriate `"write"`/`"destructive"` tool
   (which itself should avoid destructive overwrites where an append or

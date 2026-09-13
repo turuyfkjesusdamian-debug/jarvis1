@@ -6,7 +6,6 @@ import { realtimeRouter } from "./routes/realtime.js";
 import { toolsRouter } from "./routes/tools.js";
 import { chatRouter } from "./routes/chat.js";
 import { statusRouter } from "./routes/status.js";
-import { ttsRouter } from "./routes/tts.js";
 
 const srcDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const publicDir = path.join(srcDir, "..", "public");
@@ -23,7 +22,6 @@ export async function createApp(vaultPath: string): Promise<{ app: Express; core
   app.use("/api/tools", toolsRouter(core));
   app.use("/api/chat", chatRouter(core));
   app.use("/api/status", statusRouter(core));
-  app.use("/api/tts", ttsRouter());
 
   return { app, core };
 }

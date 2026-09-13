@@ -10,8 +10,6 @@ export default defineConfig({
     // See JARVIS/DEVELOPMENT.md § Tests.
     env: {
       OPENAI_API_KEY: "",
-      ELEVENLABS_API_KEY: "",
-      ELEVENLABS_VOICE_ID: "",
     },
   },
 });
