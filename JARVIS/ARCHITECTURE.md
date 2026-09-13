@@ -177,9 +177,15 @@ later without a rewrite:
   - **Workaround: GitHub Actions builds the APK instead**
     (`.github/workflows/android-build.yml`, triggered on any push touching
     `android/`) — GitHub's runners have unrestricted internet access and
-    the Android SDK preinstalled. The resulting signed APK is uploaded as
-    a workflow artifact; fetched and handed to the user directly as a
-    file, since they can't navigate the GitHub Actions UI comfortably.
+    the Android SDK preinstalled. The resulting signed APK is published to
+    a GitHub Release (tag `android-latest`, `--clobber`-replaced on every
+    build — not a version history), not an Actions artifact: artifacts are
+    served from Azure Blob Storage (`*.blob.core.windows.net`), which this
+    same sandbox's network egress allowlist also blocks (confirmed live: a
+    403 fetching the artifact download URL, right after the build itself
+    succeeded) — release assets are served from GitHub's own domains,
+    which the sandbox can reach. Fetched from there and handed to the user
+    directly as a file, since they can't navigate the GitHub UI comfortably.
   - **A committed release keystore** (`android/jarvis-release.keystore`,
     password in `android/gradle.properties`) signs every build — debug and
     release alike — so a new APK always installs over the old one instead

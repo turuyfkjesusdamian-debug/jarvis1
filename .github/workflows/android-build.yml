@@ -3,13 +3,20 @@ name: Build JARVIS Android app
 # This project's own sandbox can't reach Google's Android SDK servers, so
 # the APK is built here instead — see JARVIS/ARCHITECTURE.md § Decisions
 # ("the Android companion app"). Every push that touches android/ produces
-# a freshly signed APK as a downloadable workflow artifact.
+# a freshly signed APK, published as the "android-latest" GitHub Release
+# asset (not an Actions artifact — those are served from Azure Blob
+# Storage, which this project's own sandbox environment cannot reach to
+# fetch and hand to the user; release assets are served from GitHub's own
+# domains, which it can).
 on:
   push:
     paths:
       - "android/**"
       - ".github/workflows/android-build.yml"
   workflow_dispatch: {}
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -31,8 +38,18 @@ jobs:
       - name: Build signed release APK
         run: ./gradlew assembleRelease --stacktrace
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: jarvis-app
-          path: android/app/build/outputs/apk/release/app-release.apk
-          retention-days: 30
+      - name: Publish to the android-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          if ! gh release view android-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create android-latest "$APK" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "JARVIS Android app (latest)" \
+              --notes "Auto-built from ${{ github.sha }}. Always the most recent build — not a version history."
+          else
+            gh release upload android-latest "$APK" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          fi
