@@ -21,7 +21,7 @@ There is no fourth layer. Nothing is ever read from the vault for secrets.
 | `GEMINI_API_KEY`       | no (general chit-chat only) | — | Server-side only. Used for the "general" intent's conversational replies (Google Gemini `generateContent`). Never sent to the browser or logged. Everything else (tasks/schedule/notes/memory, and speech-to-text) works without it. |
 | `GEMINI_MODEL`         | no       | `gemini-3.5-flash` | Gemini model id used for general-intent replies. Unused if `GEMINI_API_KEY` isn't set. |
 | `ELEVENLABS_API_KEY`   | no (voice output only) | — | Server-side only. Used to synthesize speech for replies via `POST /api/tts`. Never sent to the browser or logged. |
-| `ELEVENLABS_VOICE_ID`  | no (voice output only) | — | ElevenLabs voice id to speak replies with. Required together with `ELEVENLABS_API_KEY` — both or neither. |
+| `ELEVENLABS_VOICE_ID`  | no (voice output only) | — | ElevenLabs voice id to speak replies with. Required together with `ELEVENLABS_API_KEY` — both or neither. Must be a voice already in the account (a default "premade" voice, or one added/cloned by the account owner) — a voice merely browsed from ElevenLabs' shared Voice Library returns `402 paid_plan_required` via the API on the Free plan (found live in production — see `JARVIS/ARCHITECTURE.md` § Decisions). |
 | `JARVIS_VAULT_PATH`    | no       | repo root        | Absolute or relative path to the Obsidian vault root. Defaults to the repository root since the vault and app are co-located. |
 | `JARVIS_LOG_LEVEL`     | no       | `info`           | One of `debug`, `info`, `warn`, `error`. |
 | `JARVIS_ENV`           | no       | `development`    | One of `development`, `test`, `production`. Controls things like whether `.env` is required. |

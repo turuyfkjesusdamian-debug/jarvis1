@@ -159,6 +159,18 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-13** — Switched `ELEVENLABS_VOICE_ID` away from a voice
+  browsed from ElevenLabs' shared Voice Library, after live testing on
+  Render surfaced `402 {"code":"paid_plan_required","message":"Free users
+  cannot use library voices via the API. Please upgrade your subscription
+  to use this voice."}` on every `POST /api/tts` call. ElevenLabs
+  distinguishes "premade" voices bundled with every account (usable via
+  the API on the Free plan) from "Voice Library" voices — community/shared
+  voices a user can browse and add for use on the ElevenLabs *website*,
+  but not through the API without a paid plan. See `app/.env.example` for
+  a known-working premade voice id. Lesson: don't assume a voice id picked
+  from ElevenLabs' UI works via the API just because it plays fine on
+  their site — check whether it's a "premade" voice or a "library" one.
 - **2026-09-13** — Replaced OpenAI entirely (Realtime API for voice, Chat
   Completions for general-intent text) with a three-part split, at the
   user's explicit request, after OpenAI's billing/credit setup became a
