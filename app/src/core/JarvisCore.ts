@@ -21,6 +21,14 @@ export interface HandleMessageResult {
   intent: Intent;
   reply: string;
   toolCalls: ToolCallOutcome[];
+  /**
+   * Set when a conversational model call was attempted and failed (e.g.
+   * OPENAI_API_KEY configured but the request errored) — `reply` is still
+   * the safe templated fallback, but surfacing this lets the UI show the
+   * real reason instead of a silent, unexplained "Entendido.". Never a
+   * secret: textCompletion.ts's errors never include the API key.
+   */
+  debugError?: string;
 }
 
 /**
@@ -92,10 +100,10 @@ export class JarvisCore {
     const justPersisted = await this.memory.recordUtterance(utterance);
     const intent = classifyIntent(utterance);
     const toolCalls = await gatherContext(intent, utterance, this.toolRouter);
-    const reply = await this.composeReplyForIntent(intent, utterance, toolCalls, justPersisted);
+    const { reply, debugError } = await this.composeReplyForIntent(intent, utterance, toolCalls, justPersisted);
     this.memory.session.addTurn({ role: "assistant", content: reply });
     await this.memory.flushSessionToDisk();
-    return { intent, reply, toolCalls };
+    return { intent, reply, toolCalls, debugError };
   }
 
   private async composeReplyForIntent(
@@ -103,7 +111,7 @@ export class JarvisCore {
     utterance: string,
     toolCalls: ToolCallOutcome[],
     justPersisted: Awaited<ReturnType<MemoryEngine["recordUtterance"]>>
-  ): Promise<string> {
+  ): Promise<{ reply: string; debugError?: string }> {
     if (intent === "general") {
       const cfg = getConfig();
       if (cfg.openaiApiKey) {
@@ -112,12 +120,15 @@ export class JarvisCore {
             .getRecent(6)
             .filter((t): t is typeof t & { role: "user" | "assistant" } => t.role === "user" || t.role === "assistant")
             .map((t) => ({ role: t.role, content: t.content }));
-          return await generateConversationalReply(cfg, PERSONA_SYSTEM_PROMPT, history, utterance);
+          const reply = await generateConversationalReply(cfg, PERSONA_SYSTEM_PROMPT, history, utterance);
+          return { reply };
         } catch (err) {
-          logger.warn("Conversational reply failed, using templated fallback", { error: String(err) });
+          const message = err instanceof Error ? err.message : String(err);
+          logger.warn("Conversational reply failed, using templated fallback", { error: message });
+          return { reply: composeReply(intent, toolCalls, justPersisted), debugError: message };
         }
       }
     }
-    return composeReply(intent, toolCalls, justPersisted);
+    return { reply: composeReply(intent, toolCalls, justPersisted) };
   }
 }

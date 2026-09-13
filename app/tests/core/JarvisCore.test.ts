@@ -136,6 +136,7 @@ describe("JarvisCore", () => {
       const result = await core.handleTextMessage("hola cómo estás");
       expect(result.intent).toBe("general");
       expect(result.reply).toBe("¡Muy bien! ¿Y tú?");
+      expect(result.debugError).toBeUndefined();
     } finally {
       vi.unstubAllGlobals();
       process.env.OPENAI_API_KEY = previousKey;
@@ -157,6 +158,9 @@ describe("JarvisCore", () => {
       await core.init();
       const result = await core.handleTextMessage("hola cómo estás");
       expect(result.reply).toBe("Entendido.");
+      // The failure must be surfaced, not swallowed silently — otherwise
+      // "why does it still say Entendido" is undiagnosable from the UI.
+      expect(result.debugError).toMatch(/500/);
     } finally {
       vi.unstubAllGlobals();
       process.env.OPENAI_API_KEY = previousKey;

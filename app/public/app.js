@@ -117,6 +117,9 @@ chatForm.addEventListener("submit", async (e) => {
       logTool(call.name, call.result?.ok);
     }
     addTurn("assistant", data.reply);
+    if (data.debugError) {
+      logError(`Conversational reply failed, showed the fallback instead: ${data.debugError}`);
+    }
   } catch (err) {
     logError(`Chat failed: ${err}`);
   }
