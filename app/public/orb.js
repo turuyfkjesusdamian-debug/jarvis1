@@ -16,9 +16,10 @@ function createJarvisOrb(canvas) {
   let t = 0;
   let raf = null;
 
-  // Drag-to-spin: horizontal drag adds extra spin on top of the automatic
-  // rotation, vertical drag tilts it. Releasing keeps it spinning with
-  // decaying velocity (inertia) instead of stopping dead.
+  // Drag-to-spin: horizontal drag spins it on one axis, vertical drag on
+  // the other — both free-spinning, no limit, exactly like a trackball.
+  // Releasing keeps it spinning with decaying velocity (inertia) instead
+  // of stopping dead or snapping back.
   let manualRotY = 0;
   let manualRotX = 0;
   let velY = 0;
@@ -27,7 +28,6 @@ function createJarvisOrb(canvas) {
   let lastX = 0;
   let lastY = 0;
   const DRAG_SENSITIVITY = 0.012;
-  const MAX_TILT = 1.3;
   const INERTIA_DAMPING = 0.94;
 
   const RINGS = [
@@ -96,7 +96,7 @@ function createJarvisOrb(canvas) {
     velY = dx * DRAG_SENSITIVITY;
     velX = -dy * DRAG_SENSITIVITY;
     manualRotY += velY;
-    manualRotX = Math.max(-MAX_TILT, Math.min(MAX_TILT, manualRotX + velX));
+    manualRotX += velX;
   }
 
   function onPointerUp(e) {
@@ -123,13 +123,11 @@ function createJarvisOrb(canvas) {
     if (!dragging) {
       // Inertia: keep coasting on the last drag velocity, decaying to a stop.
       manualRotY += velY;
-      manualRotX = Math.max(-MAX_TILT, Math.min(MAX_TILT, manualRotX + velX));
+      manualRotX += velX;
       velY *= INERTIA_DAMPING;
       velX *= INERTIA_DAMPING;
       if (Math.abs(velY) < 0.00005) velY = 0;
       if (Math.abs(velX) < 0.00005) velX = 0;
-      // Gently settle the tilt back toward level so it doesn't stay stuck sideways.
-      manualRotX *= 0.985;
     }
 
     // Low-alpha fill instead of a hard clear leaves faint motion trails.
