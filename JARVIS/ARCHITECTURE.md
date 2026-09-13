@@ -150,6 +150,19 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-13** — The text-chat fallback's "general" intent (small talk,
+  open-ended questions — not tasks/schedule/notes/memory, which stay
+  deterministic) now calls a real Chat Completions model
+  (`app/src/voice/textCompletion.ts`, model configurable via
+  `JARVIS_TEXT_MODEL`) when `OPENAI_API_KEY` is set, instead of always
+  returning the static "Entendido." template. Falls back to the template
+  if no key is configured or the call fails — this keeps the "text mode
+  works with zero API key" guarantee for tests and dependency-free runs
+  (see `JARVIS/DEVELOPMENT.md` § Tests) while making the fallback UI
+  actually converse when a key is available. Rationale: a plain greeting
+  ("hola, ¿cómo estás?") getting "Entendido." back was the first thing a
+  new user hit when testing without voice, and felt broken rather than
+  intentionally simple.
 - **2026-09-13** — Split speech input and output across two providers:
   OpenAI Realtime still handles listening (input audio transcription),
   reasoning, and tool-calling, but when `ELEVENLABS_API_KEY` +

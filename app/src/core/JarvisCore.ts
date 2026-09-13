@@ -9,8 +9,11 @@ import { ToolRouter } from "./toolRouter.js";
 import { classifyIntent, type Intent } from "./intent.js";
 import { gatherContext } from "./contextBuilder.js";
 import { composeReply } from "./respond.js";
+import { PERSONA_SYSTEM_PROMPT } from "./persona.js";
 import { logger } from "../logging/logger.js";
 import type { ToolCallOutcome } from "./toolRouter.js";
+import { getConfig } from "../config/index.js";
+import { generateConversationalReply, type ChatTurn } from "../voice/textCompletion.js";
 
 const INDEX_RELATIVE_PATH = "JARVIS/INDEX/vault-index.json";
 
@@ -76,18 +79,45 @@ export class JarvisCore {
 
   /**
    * Text-mode fallback: classify intent, deterministically gather the
-   * minimal context via tools, and compose a templated reply. Real voice
-   * conversations go through voice/RealtimeSession instead, where the
-   * model itself drives tool-calling. See JARVIS/ARCHITECTURE.md and
-   * core/respond.ts for why this path is intentionally simple.
+   * minimal context via tools, and compose a reply. Tasks/schedule/notes/
+   * memory intents always use the templated, deterministic reply in
+   * core/respond.ts (no model call, no network). "general" (small talk,
+   * open-ended questions) uses a real conversational model call when
+   * OPENAI_API_KEY is configured, falling back to the static template
+   * otherwise or if the call fails — see voice/textCompletion.ts. Real
+   * voice conversations go through voice/RealtimeSession instead, where
+   * the model itself drives tool-calling throughout.
    */
   async handleTextMessage(utterance: string): Promise<HandleMessageResult> {
     const justPersisted = await this.memory.recordUtterance(utterance);
     const intent = classifyIntent(utterance);
     const toolCalls = await gatherContext(intent, utterance, this.toolRouter);
-    const reply = composeReply(intent, toolCalls, justPersisted);
+    const reply = await this.composeReplyForIntent(intent, utterance, toolCalls, justPersisted);
     this.memory.session.addTurn({ role: "assistant", content: reply });
     await this.memory.flushSessionToDisk();
     return { intent, reply, toolCalls };
+  }
+
+  private async composeReplyForIntent(
+    intent: Intent,
+    utterance: string,
+    toolCalls: ToolCallOutcome[],
+    justPersisted: Awaited<ReturnType<MemoryEngine["recordUtterance"]>>
+  ): Promise<string> {
+    if (intent === "general") {
+      const cfg = getConfig();
+      if (cfg.openaiApiKey) {
+        try {
+          const history: ChatTurn[] = this.memory.session
+            .getRecent(6)
+            .filter((t): t is typeof t & { role: "user" | "assistant" } => t.role === "user" || t.role === "assistant")
+            .map((t) => ({ role: t.role, content: t.content }));
+          return await generateConversationalReply(cfg, PERSONA_SYSTEM_PROMPT, history, utterance);
+        } catch (err) {
+          logger.warn("Conversational reply failed, using templated fallback", { error: String(err) });
+        }
+      }
+    }
+    return composeReply(intent, toolCalls, justPersisted);
   }
 }

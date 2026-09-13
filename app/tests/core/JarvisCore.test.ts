@@ -1,6 +1,7 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { JarvisCore } from "../../src/core/JarvisCore.js";
 import { createTempVault } from "../testUtils.js";
+import { resetConfigForTests } from "../../src/config/index.js";
 
 describe("JarvisCore", () => {
   let cleanup: (() => Promise<void>) | undefined;
@@ -100,6 +101,66 @@ describe("JarvisCore", () => {
     expect(tasksAfter.result.ok).toBe(true);
     if (tasksAfter.result.ok) {
       expect((tasksAfter.result.data as any[]).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("uses the templated fallback for general chit-chat when no OpenAI key is configured", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const core = new JarvisCore(vault.vaultPath);
+    await core.init();
+
+    const result = await core.handleTextMessage("hola cómo estás");
+    expect(result.intent).toBe("general");
+    expect(result.reply).toBe("Entendido.");
+  });
+
+  it("uses a real conversational reply for general chit-chat when an OpenAI key is configured", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const previousKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "sk-test";
+    resetConfigForTests();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: "¡Muy bien! ¿Y tú?" } }] }),
+      } as Response))
+    );
+
+    try {
+      const core = new JarvisCore(vault.vaultPath);
+      await core.init();
+      const result = await core.handleTextMessage("hola cómo estás");
+      expect(result.intent).toBe("general");
+      expect(result.reply).toBe("¡Muy bien! ¿Y tú?");
+    } finally {
+      vi.unstubAllGlobals();
+      process.env.OPENAI_API_KEY = previousKey;
+      resetConfigForTests();
+    }
+  });
+
+  it("falls back to the templated reply if the conversational call fails", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const previousKey = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "sk-test";
+    resetConfigForTests();
+
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500, text: async () => "boom" } as Response)));
+
+    try {
+      const core = new JarvisCore(vault.vaultPath);
+      await core.init();
+      const result = await core.handleTextMessage("hola cómo estás");
+      expect(result.reply).toBe("Entendido.");
+    } finally {
+      vi.unstubAllGlobals();
+      process.env.OPENAI_API_KEY = previousKey;
+      resetConfigForTests();
     }
   });
 

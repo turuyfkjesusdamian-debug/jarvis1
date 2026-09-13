@@ -27,6 +27,7 @@ There is no fourth layer. Nothing is ever read from the vault for secrets.
 | `JARVIS_PORT`          | no       | `3939`           | HTTP port for the local server (UI + API). Ignored if `PORT` is set. |
 | `PORT`                 | no       | —                | Standard variable injected by hosting platforms (Render, Heroku, Railway, ...) to assign the port at deploy time. Takes priority over `JARVIS_PORT` when present — don't set this yourself locally. |
 | `JARVIS_REALTIME_MODEL`| no       | `gpt-realtime`   | Model id passed to the Realtime API session. |
+| `JARVIS_TEXT_MODEL`    | no       | `gpt-4o-mini`    | Chat Completions model used for the text-chat fallback's general-conversation replies only (see `JARVIS/ARCHITECTURE.md` § Decisions). Unused if `OPENAI_API_KEY` isn't set. |
 
 ## Rules
 
@@ -40,4 +41,7 @@ There is no fourth layer. Nothing is ever read from the vault for secrets.
 - Never add a new secret-like variable without updating `JARVIS/SECURITY.md`
   and `.gitignore` if it implies a new file.
 - Tests never require `OPENAI_API_KEY` — anything that needs it is mocked
-  (see `JARVIS/DEVELOPMENT.md` § Tests).
+  (see `JARVIS/DEVELOPMENT.md` § Tests). `app/vitest.config.ts` forces
+  `OPENAI_API_KEY`/`ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID` to empty for
+  every test run regardless of what's in a developer's local `app/.env`,
+  so the suite can't accidentally make a real network call with a real key.

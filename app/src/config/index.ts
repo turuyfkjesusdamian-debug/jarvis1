@@ -24,6 +24,10 @@ const envSchema = z.object({
   // over JARVIS_PORT when both are present — see getConfig() below.
   PORT: z.coerce.number().int().positive().optional(),
   JARVIS_REALTIME_MODEL: z.string().default("gpt-realtime"),
+  // Used only for the text-chat fallback's general-conversation replies
+  // (see voice/textCompletion.ts) — a plain Chat Completions model, not
+  // the Realtime one above.
+  JARVIS_TEXT_MODEL: z.string().default("gpt-4o-mini"),
 });
 
 export type JarvisConfig = {
@@ -35,6 +39,7 @@ export type JarvisConfig = {
   env: "development" | "test" | "production";
   port: number;
   realtimeModel: string;
+  textModel: string;
   appDir: string;
 };
 
@@ -56,6 +61,7 @@ function load(): JarvisConfig {
     env: env.JARVIS_ENV,
     port: env.PORT ?? env.JARVIS_PORT ?? 3939,
     realtimeModel: env.JARVIS_REALTIME_MODEL,
+    textModel: env.JARVIS_TEXT_MODEL,
     appDir,
   };
 }
