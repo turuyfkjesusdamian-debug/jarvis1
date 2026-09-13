@@ -69,7 +69,7 @@ describe("JarvisCore", () => {
 
     const result = await core.handleTextMessage("¿Qué recuerdas sobre el proyecto?");
     expect(result.intent).toBe("memory");
-    expect(result.reply).not.toBe("Entendido.");
+    expect(result.reply).not.toBe("Entendido, señor.");
 
     const projectFacts = await core.memory.permanent.list("projects");
     expect(projectFacts.some((f) => f.text.includes("¿Qué recuerdas"))).toBe(false);
@@ -112,7 +112,7 @@ describe("JarvisCore", () => {
 
     const result = await core.handleTextMessage("hola cómo estás");
     expect(result.intent).toBe("general");
-    expect(result.reply).toBe("Entendido.");
+    expect(result.reply).toBe("Entendido, señor.");
   });
 
   it("uses a real conversational reply for general chit-chat when a Gemini key is configured", async () => {
@@ -157,7 +157,7 @@ describe("JarvisCore", () => {
       const core = new JarvisCore(vault.vaultPath);
       await core.init();
       const result = await core.handleTextMessage("hola cómo estás");
-      expect(result.reply).toBe("Entendido.");
+      expect(result.reply).toBe("Entendido, señor.");
       // The failure must be surfaced, not swallowed silently — otherwise
       // "why does it still say Entendido" is undiagnosable from the UI.
       expect(result.debugError).toMatch(/500/);

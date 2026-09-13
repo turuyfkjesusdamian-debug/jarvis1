@@ -159,6 +159,16 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-13** — Gave JARVIS an explicit personality: the classic
+  British-butler archetype (the same one Tony Stark's JARVIS uses) —
+  composed, formal but warm, dry wit, addresses the user as "señor".
+  Previously the persona was competent but generic ("calm, professional,
+  concise") with no distinctive voice. Updated both halves that must stay
+  in sync (`JARVIS/PERSONA.md` and `app/src/core/persona.ts`'s system
+  prompt for Gemini), and the deterministic templates in
+  `core/respond.ts` (tasks/schedule/notes/memory replies never call a
+  model, so they needed the personality baked in directly, not just the
+  Gemini-backed "general" chit-chat path).
 - **2026-09-13** — Switched `ELEVENLABS_VOICE_ID` away from a voice
   browsed from ElevenLabs' shared Voice Library, after live testing on
   Render surfaced `402 {"code":"paid_plan_required","message":"Free users

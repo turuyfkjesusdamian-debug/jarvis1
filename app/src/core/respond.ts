@@ -7,12 +7,13 @@ import type { MemoryFact } from "../memory/permanentMemory.js";
  * made (e.g. no GEMINI_API_KEY configured, or in tests) or for intents
  * that never need one (tasks/schedule/notes/memory always use this). This
  * exists so the app is usable and testable without any external API. Tone
- * follows JARVIS/PERSONA.md.
+ * follows JARVIS/PERSONA.md — the classic composed butler, addresses the
+ * user as "señor", dry wit permitted but never at the expense of clarity.
  *
  * `justPersisted` is set when this same utterance was just written to
  * permanent memory (see MemoryEngine.recordUtterance) — in that case the
- * right reply is a plain confirmation ("Entendido, lo recordaré."), never
- * an echo of the utterance itself back at the user.
+ * right reply is a plain confirmation, never an echo of the utterance
+ * itself back at the user.
  */
 export function composeReply(intent: Intent, outcomes: ToolCallOutcome[], justPersisted?: MemoryFact): string {
   switch (intent) {
@@ -21,34 +22,34 @@ export function composeReply(intent: Intent, outcomes: ToolCallOutcome[], justPe
       const tasksOutcome = outcomes.find((o) => o.name === "tasks.listTasks");
       if (tasksOutcome?.result.ok) {
         const tasks = tasksOutcome.result.data as { text: string }[];
-        if (tasks.length === 0) return "No tienes tareas pendientes registradas.";
+        if (tasks.length === 0) return "Ninguna tarea pendiente, señor. El horizonte está despejado.";
         const preview = tasks.slice(0, 3).map((t) => t.text).join("; ");
-        return `Tienes ${tasks.length} tarea${tasks.length === 1 ? "" : "s"} pendiente${tasks.length === 1 ? "" : "s"}: ${preview}.`;
+        return `Tiene ${tasks.length} tarea${tasks.length === 1 ? "" : "s"} pendiente${tasks.length === 1 ? "" : "s"}, señor: ${preview}.`;
       }
-      return "No pude consultar tus tareas en este momento.";
+      return "Me temo que no puedo consultar sus tareas en este momento, señor.";
     }
     case "notes": {
       const searchOutcome = outcomes.find((o) => o.name === "obsidian.searchNotes");
       if (searchOutcome?.result.ok) {
         const notes = searchOutcome.result.data as { title: string }[];
-        if (notes.length === 0) return "No encontré notas relevantes en el vault.";
-        return `Encontré ${notes.length} nota${notes.length === 1 ? "" : "s"}: ${notes.map((n) => n.title).join(", ")}.`;
+        if (notes.length === 0) return "No he encontrado notas relevantes al respecto, señor.";
+        return `He encontrado ${notes.length} nota${notes.length === 1 ? "" : "s"}, señor: ${notes.map((n) => n.title).join(", ")}.`;
       }
-      return "No pude buscar en el vault en este momento.";
+      return "Me temo que no puedo buscar en el vault en este momento, señor.";
     }
     case "memory": {
-      if (justPersisted) return "Entendido, lo recordaré.";
+      if (justPersisted) return "Por supuesto, señor. Lo recordaré.";
 
       const memOutcome = outcomes.find((o) => o.name === "memory.searchMemory");
       if (memOutcome?.result.ok) {
         const facts = memOutcome.result.data as { text: string }[];
-        if (facts.length === 0) return "No tengo nada guardado sobre eso.";
-        return `Esto es lo que tengo guardado: ${facts.map((f) => f.text).join("; ")}.`;
+        if (facts.length === 0) return "No dispongo de nada guardado sobre eso, señor.";
+        return `Esto es lo que tengo registrado, señor: ${facts.map((f) => f.text).join("; ")}.`;
       }
-      return "No pude consultar la memoria en este momento.";
+      return "Me temo que no puedo consultar la memoria en este momento, señor.";
     }
     case "general":
     default:
-      return "Entendido.";
+      return "Entendido, señor.";
   }
 }
