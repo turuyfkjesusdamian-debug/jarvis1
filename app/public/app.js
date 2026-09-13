@@ -1,6 +1,13 @@
 // Minimal JARVIS web UI: text-mode chat (always available) + voice mode
 // (OpenAI Realtime over WebRTC, requires OPENAI_API_KEY configured
 // server-side). See JARVIS/ARCHITECTURE.md for the overall data flow.
+//
+// Speech output: when ElevenLabs is configured server-side, the Realtime
+// session is created text-only (see voice/realtimeClient.ts) and this
+// file fetches synthesized audio from /api/tts for each finished response
+// instead of playing OpenAI's own voice.
+
+let speechSynthesisConfigured = false;
 
 const conversationEl = document.getElementById("conversation");
 const toolLogEl = document.getElementById("tool-log");
@@ -40,11 +47,35 @@ function logError(message) {
   errorLogEl.prepend(li);
 }
 
+const ttsAudioEl = new Audio();
+
+/** Fetches ElevenLabs-synthesized speech for text and plays it. No-op if not configured. */
+async function speak(text) {
+  if (!speechSynthesisConfigured || !text) return;
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "TTS request failed");
+    }
+    const blob = await res.blob();
+    ttsAudioEl.src = URL.createObjectURL(blob);
+    await ttsAudioEl.play();
+  } catch (err) {
+    logError(`Speech synthesis failed: ${err}`);
+  }
+}
+
 async function refreshStatus() {
   try {
     const res = await fetch("/api/status");
     const data = await res.json();
     configJsonEl.textContent = JSON.stringify(data, null, 2);
+    speechSynthesisConfigured = Boolean(data.speechSynthesisConfigured);
     setPill(connStatusEl, "connection: ok", "ok");
     setPill(
       assistantStatusEl,
@@ -78,6 +109,7 @@ chatForm.addEventListener("submit", async (e) => {
       logTool(call.name, call.result?.ok);
     }
     addTurn("assistant", data.reply);
+    speak(data.reply);
   } catch (err) {
     logError(`Chat failed: ${err}`);
   }
@@ -136,7 +168,15 @@ function handleRealtimeEvent(event) {
       if (event.transcript) addTurn("user", event.transcript);
       break;
     case "response.audio_transcript.done":
+      // Only fires when OpenAI itself is generating audio (ElevenLabs not configured).
       if (event.transcript) addTurn("assistant", event.transcript);
+      break;
+    case "response.text.done":
+      // Fires instead of the above when the session is text-only (ElevenLabs speaks it).
+      if (event.text) {
+        addTurn("assistant", event.text);
+        speak(event.text);
+      }
       break;
     case "error":
       logError(event.error?.message || "Realtime error");
@@ -157,6 +197,8 @@ async function startVoice() {
     setPill(micStatusEl, "mic: live", "ok");
 
     peerConnection = new RTCPeerConnection();
+    // Only fires when the session is audio+text (ElevenLabs not configured) —
+    // OpenAI won't send an audio track at all for a text-only session.
     peerConnection.ontrack = (e) => {
       const audioEl = document.createElement("audio");
       audioEl.autoplay = true;

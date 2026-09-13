@@ -8,9 +8,10 @@ updated: 2026-09-13
 
 ## Current state: v1 (text + voice-ready) working end to end
 
-First development session, completed in full through Phase 10 (hardening).
-82/82 tests pass (`cd app && npm test`), `npm run typecheck` and
-`npm run build` are clean.
+First development session, completed in full through Phase 10 (hardening),
+plus a same-session follow-up adding ElevenLabs speech output. 89/89 tests
+pass (`cd app && npm test`), `npm run typecheck` and `npm run build` are
+clean.
 
 ## What exists
 
@@ -48,32 +49,46 @@ First development session, completed in full through Phase 10 (hardening).
   short-lived OpenAI Realtime token server-side (the long-lived
   `OPENAI_API_KEY` never leaves this function); tool schemas are
   auto-derived from the tool registry via a small zod→JSON-Schema
-  converter (`tools/jsonSchema.ts`).
+  converter (`tools/jsonSchema.ts`). When `ELEVENLABS_API_KEY` +
+  `ELEVENLABS_VOICE_ID` are both set, the session is created text-only
+  (`modalities: ["text"]`) and `elevenLabsClient.ts` synthesizes the
+  spoken reply instead of an OpenAI built-in voice — see
+  `JARVIS/ARCHITECTURE.md` § Decisions.
 - **Server** (`app/src/server/`): Express app serving the static UI plus
-  `/api/{status,chat,tools,realtime/session}`. `/api/tools/:name`
-  requires `confirmed: true` in the body for destructive tools.
+  `/api/{status,chat,tools,realtime/session,tts}`. `/api/tools/:name`
+  requires `confirmed: true` in the body for destructive tools; `/api/tts`
+  proxies text to ElevenLabs and returns audio bytes only (never the key).
 - **UI** (`app/public/`): single-page status/conversation/tool-activity
-  view, a text-chat fallback (works without any API key), and browser-side
+  view, a text-chat fallback (works without any API key, and speaks its
+  replies via `/api/tts` when ElevenLabs is configured), and browser-side
   WebRTC voice wiring (mic capture → OpenAI Realtime → tool-call bridge
-  back through `/api/tools/:name`).
-- **Tests** (`app/tests/`, 82 tests / 17 files): indexer, retrieval,
+  back through `/api/tools/:name`, with `/api/tts` used for output speech
+  in the ElevenLabs case).
+- **Tests** (`app/tests/`, 89 tests / 19 files): indexer, retrieval,
   reader (incl. path-traversal rejection), both memory tiers + the
   persistence heuristic, every tool group, the registry's
   validation/permission/confirmation logic, intent classification, an
   end-to-end `JarvisCore` flow (including a test that a note containing
   "ignore all previous instructions" is treated as inert data, per
-  `JARVIS/SECURITY.md`), and the realtime client with `fetch` mocked (no
-  network, no real API key needed).
+  `JARVIS/SECURITY.md`), and the OpenAI + ElevenLabs clients with `fetch`
+  mocked (no network, no real API keys needed).
 
 ## What's missing / next steps
 
-- **Not tested against the live OpenAI Realtime API or a real
-  microphone/browser** — this sandbox has neither. The WebRTC flow in
-  `app/public/app.js` follows the documented Realtime API pattern
-  (ephemeral token → SDP exchange → data-channel tool-call bridge) but
-  has only been exercised via mocked `fetch` in tests, not a live session.
-  Whoever runs this with a real `OPENAI_API_KEY` and a browser should be
-  the first to validate the voice loop end-to-end and report back.
+- **Not tested against the live OpenAI Realtime API, ElevenLabs API, or a
+  real microphone/browser** — this sandbox's network egress allowlist
+  blocks both `api.openai.com` and `api.elevenlabs.io` (confirmed live:
+  both return "Host not in allowlist" from this environment, unrelated to
+  the keys themselves). Both the WebRTC flow in `app/public/app.js` and
+  the ElevenLabs TTS call in `app/src/voice/elevenLabsClient.ts` follow
+  the documented API contracts and are covered by tests with `fetch`
+  mocked, but neither has been exercised against the real APIs. Whoever
+  runs this with real keys and unrestricted network access (a local
+  machine, or an environment allowlisting those hosts) should be the
+  first to validate the voice + speech loop end-to-end and report back.
+  Real-looking `OPENAI_API_KEY` (`sk-proj-...`) and `ELEVENLABS_API_KEY`
+  (`sk_...`) plus `ELEVENLABS_VOICE_ID=aZilAbZ5tl8i9lA1EF02` are already
+  in `app/.env` (local only, gitignored, never committed).
 - Model-generated (non-templated) replies for the text-mode fallback are
   out of scope for v1 — see `core/respond.ts` for why the deterministic
   templates are a deliberate choice, not a stopgap forgotten in place.

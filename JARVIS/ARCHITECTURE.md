@@ -150,6 +150,18 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-13** — Split speech input and output across two providers:
+  OpenAI Realtime still handles listening (input audio transcription),
+  reasoning, and tool-calling, but when `ELEVENLABS_API_KEY` +
+  `ELEVENLABS_VOICE_ID` are configured, the Realtime session is created
+  with `modalities: ["text"]` (no OpenAI-generated audio) and the browser
+  sends the finished response text to `POST /api/tts`
+  (`app/src/voice/elevenLabsClient.ts`) to synthesize speech with a
+  specific ElevenLabs voice instead. Without ElevenLabs configured, the
+  session falls back to OpenAI's own built-in voice as before — this is
+  additive, not a replacement. Rationale: the user wants a specific,
+  chosen voice identity for JARVIS, which OpenAI's Realtime preset voices
+  don't provide. Both API keys are read only inside `app/src/voice/`.
 - **2026-09-13** — Chose Node.js + TypeScript for the app, Express for
   the HTTP server, and the OpenAI Realtime API (WebRTC from the browser,
   ephemeral token minted server-side) for voice. Rationale: first-class

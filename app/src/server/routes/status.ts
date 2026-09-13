@@ -12,6 +12,7 @@ export function statusRouter(core: JarvisCore): Router {
     res.json({
       env: cfg.env,
       voiceConfigured: Boolean(cfg.openaiApiKey),
+      speechSynthesisConfigured: Boolean(cfg.elevenLabsApiKey && cfg.elevenLabsVoiceId),
       realtimeModel: cfg.realtimeModel,
       vaultPath: cfg.vaultPath,
       system: outcome.result,

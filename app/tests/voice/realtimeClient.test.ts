@@ -6,6 +6,8 @@ import type { JarvisConfig } from "../../src/config/index.js";
 function makeConfig(overrides: Partial<JarvisConfig> = {}): JarvisConfig {
   return {
     openaiApiKey: "sk-test",
+    elevenLabsApiKey: undefined,
+    elevenLabsVoiceId: undefined,
     vaultPath: "/tmp/vault",
     logLevel: "error",
     env: "test",
@@ -45,6 +47,31 @@ describe("createEphemeralRealtimeSession", () => {
     expect(capturedBody.tools.length).toBeGreaterThan(0);
     expect(session.clientSecret).toBe("ephemeral-abc");
     expect(JSON.stringify(session)).not.toContain("sk-test");
+    expect(capturedBody.modalities).toEqual(["audio", "text"]);
+    expect(session.useElevenLabsSpeech).toBe(false);
+  });
+
+  it("requests text-only modalities and flags useElevenLabsSpeech when ElevenLabs is configured", async () => {
+    let capturedBody: any = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        capturedBody = JSON.parse(init.body as string);
+        return {
+          ok: true,
+          json: async () => ({ client_secret: { value: "ephemeral-abc", expires_at: null } }),
+        } as Response;
+      })
+    );
+
+    const registry = createToolRegistry();
+    const session = await createEphemeralRealtimeSession(
+      makeConfig({ elevenLabsApiKey: "sk_test", elevenLabsVoiceId: "voice-1" }),
+      registry
+    );
+
+    expect(capturedBody.modalities).toEqual(["text"]);
+    expect(session.useElevenLabsSpeech).toBe(true);
   });
 
   it("throws when OPENAI_API_KEY is not configured", async () => {

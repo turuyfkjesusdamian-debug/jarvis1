@@ -11,4 +11,6 @@ export interface EphemeralSessionResponse {
   expiresAt: string | null;
   model: string;
   tools: RealtimeToolDefinition[];
+  /** When true, the session was created with text-only output — the browser must synthesize speech itself via /api/tts. */
+  useElevenLabsSpeech: boolean;
 }
