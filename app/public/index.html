@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JARVIS</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>JARVIS</h1>
+    <div id="status-bar">
+      <span class="status-pill" id="conn-status">connection: unknown</span>
+      <span class="status-pill" id="mic-status">mic: idle</span>
+      <span class="status-pill" id="assistant-status">assistant: idle</span>
+    </div>
+  </header>
+
+  <main>
+    <section id="conversation" aria-label="Conversation">
+      <p class="hint">Say or type something. Voice requires OPENAI_API_KEY configured server-side.</p>
+    </section>
+
+    <section id="tool-activity" aria-label="Tool activity">
+      <h2>Tool activity</h2>
+      <ul id="tool-log"></ul>
+    </section>
+
+    <section id="errors" aria-label="Errors" hidden>
+      <h2>Errors</h2>
+      <ul id="error-log"></ul>
+    </section>
+  </main>
+
+  <footer>
+    <form id="chat-form">
+      <input id="chat-input" type="text" placeholder="Type a message (text-mode fallback)" autocomplete="off" />
+      <button type="submit">Send</button>
+    </form>
+    <button id="mic-button" type="button">🎤 Start voice</button>
+    <details id="config-panel">
+      <summary>Configuration</summary>
+      <pre id="config-json">loading…</pre>
+    </details>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

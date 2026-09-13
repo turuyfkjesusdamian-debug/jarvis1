@@ -1,0 +1,22 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Node
+app/node_modules/
+app/dist/
+app/coverage/
+npm-debug.log*
+
+# Generated vault index (rebuildable via `npm run index`)
+JARVIS/INDEX/vault-index.json
+JARVIS/INDEX/memory-index.json
+
+# Logs
+JARVIS/LOGS/*.log
+app/*.log
+
+# OS / editor
+.DS_Store
+*.swp

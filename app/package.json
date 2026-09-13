@@ -1,0 +1,32 @@
+{
+  "name": "jarvis-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "JARVIS personal assistant application (core, tools, memory, Obsidian retrieval, voice, minimal UI).",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "index": "tsx src/scripts/reindex.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "gray-matter": "^4.0.3",
+    "nanoid": "^5.0.9",
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
