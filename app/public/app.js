@@ -229,7 +229,12 @@ async function startVoice() {
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
 
-    const sdpRes = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(session.model)}`, {
+    // As of 2026, the WebRTC SDP exchange endpoint is /v1/realtime/calls
+    // (no ?model= query param — the model is already bound to the
+    // ephemeral client secret from /v1/realtime/client_secrets). The
+    // older /v1/realtime?model=... endpoint from most 2025 tutorials
+    // returns 404 now.
+    const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
       method: "POST",
       body: offer.sdp,
       headers: {

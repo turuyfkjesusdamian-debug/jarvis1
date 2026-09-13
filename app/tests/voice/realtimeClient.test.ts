@@ -32,7 +32,7 @@ describe("createEphemeralRealtimeSession", () => {
         capturedBody = JSON.parse(init.body as string);
         return {
           ok: true,
-          json: async () => ({ client_secret: { value: "ephemeral-abc", expires_at: "2026-01-01T00:00:00Z" } }),
+          json: async () => ({ value: "ephemeral-abc", expires_at: 1738015688 }),
         } as Response;
       })
     );
@@ -41,11 +41,11 @@ describe("createEphemeralRealtimeSession", () => {
     const session = await createEphemeralRealtimeSession(makeConfig(), registry);
 
     expect(capturedAuth).toBe("Bearer sk-test");
-    expect(capturedBody.model).toBe("gpt-realtime");
-    expect(capturedBody.tools.length).toBeGreaterThan(0);
+    expect(capturedBody.session.type).toBe("realtime");
+    expect(capturedBody.session.model).toBe("gpt-realtime");
+    expect(capturedBody.session.tools.length).toBeGreaterThan(0);
     expect(session.clientSecret).toBe("ephemeral-abc");
     expect(JSON.stringify(session)).not.toContain("sk-test");
-    expect(capturedBody.modalities).toEqual(["audio", "text"]);
   });
 
   it("throws when OPENAI_API_KEY is not configured", async () => {

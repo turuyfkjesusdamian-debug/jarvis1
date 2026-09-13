@@ -150,6 +150,21 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-13** — Migrated to OpenAI's current Realtime API endpoints
+  after live testing on Render (with real credentials, unblocked network)
+  surfaced `404 Invalid URL (POST /v1/realtime/sessions)`. Confirmed via
+  web search that OpenAI moved ephemeral-token minting from
+  `/v1/realtime/sessions` to `/v1/realtime/client_secrets` (session config
+  now nested under a `session: { type: "realtime", ... }` object; the
+  response's client secret is a top-level `value`/`expires_at`, not
+  nested under `client_secret`), and moved the browser's WebRTC SDP
+  exchange from `/v1/realtime?model=...` to `/v1/realtime/calls` (no
+  `?model=` — the model is already bound to the client secret). Updated
+  `app/src/voice/realtimeClient.ts` and `app/public/app.js` accordingly.
+  This project's own docs/comments elsewhere may still describe the old
+  endpoints in passing — if voice breaks again with a 404, check OpenAI's
+  current Realtime API docs before assuming it's a config problem, since
+  this API surface has moved at least once already.
 - **2026-09-13** — Removed the ElevenLabs speech-output integration
   (added and reverted the same day, see the two entries below) at the
   user's request. Voice mode is back to a single provider end-to-end:
