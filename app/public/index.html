@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -18,9 +18,9 @@
     <header class="topbar">
       <div class="brand">JARVIS</div>
       <div id="status-bar">
-        <span class="status-pill" id="conn-status">connection: unknown</span>
-        <span class="status-pill" id="mic-status">mic: idle</span>
-        <span class="status-pill" id="assistant-status">assistant: idle</span>
+        <span class="status-pill" id="conn-status">conexión: desconocida</span>
+        <span class="status-pill" id="mic-status">micrófono: inactivo</span>
+        <span class="status-pill" id="assistant-status">asistente: inactivo</span>
       </div>
     </header>
 
@@ -31,8 +31,8 @@
         <canvas id="orb-canvas"></canvas>
       </div>
 
-      <section id="conversation" aria-label="Conversation">
-        <p class="hint">Say or type something. Voice needs a Chromium-based browser (Chrome/Edge); replies speak aloud when ElevenLabs is configured server-side.</p>
+      <section id="conversation" aria-label="Conversación">
+        <p class="hint">Habla o escribe algo. La voz necesita un navegador basado en Chromium (Chrome/Edge); las respuestas se escuchan en voz alta cuando ElevenLabs está configurado en el servidor.</p>
       </section>
     </main>
 
@@ -40,24 +40,24 @@
 
     <footer>
       <form id="chat-form">
-        <input id="chat-input" type="text" placeholder="Type a message (text-mode fallback)" autocomplete="off" />
-        <button type="submit">Send</button>
+        <input id="chat-input" type="text" placeholder="Escribe un mensaje (modo texto alternativo)" autocomplete="off" />
+        <button type="submit">Enviar</button>
       </form>
-      <button id="mic-button" type="button">🎤 Start voice</button>
+      <button id="mic-button" type="button">🎤 Iniciar voz</button>
 
       <details id="panel-details">
-        <summary>Details</summary>
-        <section id="tool-activity" aria-label="Tool activity">
-          <h2>Tool activity</h2>
+        <summary>Detalles</summary>
+        <section id="tool-activity" aria-label="Actividad de herramientas">
+          <h2>Actividad de herramientas</h2>
           <ul id="tool-log"></ul>
         </section>
-        <section id="errors" aria-label="Errors" hidden>
-          <h2>Errors</h2>
+        <section id="errors" aria-label="Errores" hidden>
+          <h2>Errores</h2>
           <ul id="error-log"></ul>
         </section>
         <details id="config-panel">
-          <summary>Configuration</summary>
-          <pre id="config-json">loading…</pre>
+          <summary>Configuración</summary>
+          <pre id="config-json">cargando…</pre>
         </details>
         <button id="logout-button" type="button" hidden>Cerrar sesión</button>
       </details>

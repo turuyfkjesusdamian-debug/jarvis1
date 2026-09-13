@@ -112,13 +112,13 @@ async function speak(text) {
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || "TTS request failed");
+      throw new Error(data.error || "Falló la solicitud de voz");
     }
     const blob = await res.blob();
     ttsAudioEl.src = URL.createObjectURL(blob);
     await ttsAudioEl.play();
   } catch (err) {
-    logError(`Speech synthesis failed: ${err}`);
+    logError(`Falló la síntesis de voz: ${err}`);
   }
 }
 
@@ -129,15 +129,15 @@ async function refreshStatus() {
     configJsonEl.textContent = JSON.stringify(data, null, 2);
     speechSynthesisConfigured = Boolean(data.speechSynthesisConfigured);
     logoutButton.hidden = !data.authEnabled;
-    setPill(connStatusEl, "connection: ok", "ok");
+    setPill(connStatusEl, "conexión: ok", "ok");
     setPill(
       assistantStatusEl,
-      data.geminiConfigured ? "assistant: brain ready" : "assistant: templates only",
+      data.geminiConfigured ? "asistente: listo" : "asistente: solo plantillas",
       data.geminiConfigured ? "ok" : "warn"
     );
   } catch (err) {
-    setPill(connStatusEl, "connection: error", "error");
-    logError(`Status check failed: ${err}`);
+    setPill(connStatusEl, "conexión: error", "error");
+    logError(`Falló la verificación de estado: ${err}`);
   }
 }
 
@@ -153,17 +153,17 @@ async function sendMessage(message) {
       body: JSON.stringify({ message }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Request failed");
+    if (!res.ok) throw new Error(data.error || "Solicitud fallida");
     for (const call of data.toolCalls ?? []) {
       logTool(call.name, call.result?.ok);
     }
     addTurn("assistant", data.reply);
     if (data.debugError) {
-      logError(`Conversational reply failed, showed the fallback instead: ${data.debugError}`);
+      logError(`Falló la respuesta conversacional, se mostró la alternativa: ${data.debugError}`);
     }
     speak(data.reply);
   } catch (err) {
-    logError(`Chat failed: ${err}`);
+    logError(`Falló el chat: ${err}`);
   }
 }
 
@@ -185,10 +185,10 @@ let voiceActive = false;
 
 async function startVoice() {
   if (!SpeechRecognitionCtor) {
-    logError("This browser doesn't support speech recognition. Try Chrome or Edge.");
+    logError("Este navegador no soporta reconocimiento de voz. Prueba con Chrome o Edge.");
     return;
   }
-  setPill(micStatusEl, "mic: requesting…", "warn");
+  setPill(micStatusEl, "micrófono: solicitando…", "warn");
   ensureAudioContext();
 
   try {
@@ -200,10 +200,10 @@ async function startVoice() {
     micAnalyser = ctx.createAnalyser();
     micAnalyser.fftSize = 256;
     micSource.connect(micAnalyser); // analysis only, never routed to destination
-    setPill(micStatusEl, "mic: live", "ok");
+    setPill(micStatusEl, "micrófono: activo", "ok");
   } catch (err) {
-    setPill(micStatusEl, "mic: error", "error");
-    logError(`Microphone access failed: ${err}`);
+    setPill(micStatusEl, "micrófono: error", "error");
+    logError(`No se pudo acceder al micrófono: ${err}`);
     return;
   }
 
@@ -222,7 +222,7 @@ async function startVoice() {
 
   recognition.onerror = (event) => {
     if (event.error !== "no-speech") {
-      logError(`Speech recognition error: ${event.error}`);
+      logError(`Error de reconocimiento de voz: ${event.error}`);
     }
   };
 
@@ -240,14 +240,14 @@ async function startVoice() {
 
   recognition.start();
   voiceActive = true;
-  micButton.textContent = "🎤 Stop voice";
+  micButton.textContent = "🎤 Detener voz";
   micButton.classList.add("listening");
-  setPill(assistantStatusEl, "assistant: listening", "ok");
+  setPill(assistantStatusEl, "asistente: escuchando", "ok");
 }
 
 function stopVoice() {
   voiceActive = false;
-  micButton.textContent = "🎤 Start voice";
+  micButton.textContent = "🎤 Iniciar voz";
   micButton.classList.remove("listening");
   if (recognition) {
     recognition.onend = null;
@@ -257,8 +257,8 @@ function stopVoice() {
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
   micStream = null;
   micAnalyser = null;
-  setPill(micStatusEl, "mic: idle");
-  setPill(assistantStatusEl, "assistant: idle");
+  setPill(micStatusEl, "micrófono: inactivo");
+  setPill(assistantStatusEl, "asistente: inactivo");
 }
 
 micButton.addEventListener("click", () => {

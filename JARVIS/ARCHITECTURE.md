@@ -161,6 +161,17 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-13** — Made JARVIS Spanish-only end to end, at the user's
+  request. Previously the persona said "reply in whichever language the
+  user is speaking" (a multilingual default); changed to "always reply in
+  Spanish" in both `app/src/core/persona.ts` (Gemini's system prompt) and
+  `JARVIS/PERSONA.md`. Also translated the remaining English strings in
+  the UI itself (`app/public/index.html`, `app/public/app.js` — status
+  pills, button labels, hint text, error messages) that had crept back to
+  English during the app.js rewrite for the Gemini migration; the
+  deterministic templates in `core/respond.ts` were already Spanish. This
+  is a one-user, Spanish-speaking deployment, not a general-purpose
+  multilingual assistant — don't reintroduce language-detection logic.
 - **2026-09-13** — Made JARVIS installable as a PWA and gated the whole
   app behind an optional single shared password, at the user's request
   ("que sea una app en vez de una página para que solo yo la pueda
