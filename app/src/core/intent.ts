@@ -16,7 +16,19 @@ const RULES: IntentRule[] = [
   },
   {
     intent: "memory",
-    patterns: [/recu[eé]rdame/i, /\bremember\b/i, /no olvides/i, /\bforget\b/i, /olvida/i],
+    patterns: [
+      /recu[eé]rdame/i,
+      /\bremember\b/i,
+      /no olvides/i,
+      /\bforget\b/i,
+      /olvida/i,
+      // Recall questions ("what do you remember about X"), not just save instructions.
+      /qu[eé] recuerdas/i,
+      /te acuerdas/i,
+      /recuerdas algo/i,
+      /do you remember/i,
+      /what.*remember/i,
+    ],
   },
   {
     intent: "notes",

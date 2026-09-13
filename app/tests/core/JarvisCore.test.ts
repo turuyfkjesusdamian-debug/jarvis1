@@ -47,15 +47,44 @@ describe("JarvisCore", () => {
     expect(facts).toHaveLength(1); // only the fixture-seeded fact, nothing new
   });
 
-  it("persists an explicit remember request", async () => {
+  it("persists an explicit remember request and confirms naturally, without echoing the utterance", async () => {
     const vault = await createTempVault();
     cleanup = vault.cleanup;
     const core = new JarvisCore(vault.vaultPath);
     await core.init();
 
-    await core.handleTextMessage("Remember that this project is important to me.");
+    const result = await core.handleTextMessage("Remember that this project is important to me.");
     const facts = await core.memory.permanent.list("important-facts");
     expect(facts.some((f) => f.text.includes("important to me"))).toBe(true);
+    expect(result.reply).not.toContain("Remember that this project is important to me");
+    expect(result.reply.toLowerCase()).toMatch(/recordar/);
+  });
+
+  it("answers a memory recall question without polluting permanent memory with the question itself", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const core = new JarvisCore(vault.vaultPath);
+    await core.init();
+
+    const result = await core.handleTextMessage("¿Qué recuerdas sobre el proyecto?");
+    expect(result.intent).toBe("memory");
+    expect(result.reply).not.toBe("Entendido.");
+
+    const projectFacts = await core.memory.permanent.list("projects");
+    expect(projectFacts.some((f) => f.text.includes("¿Qué recuerdas"))).toBe(false);
+  });
+
+  it("recalls a previously saved fact when asked a differently-phrased question", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const core = new JarvisCore(vault.vaultPath);
+    await core.init();
+
+    await core.handleTextMessage("Remember that the Apollo project deadline is next week.");
+    const result = await core.handleTextMessage("¿Qué recuerdas sobre el proyecto Apollo?");
+
+    expect(result.intent).toBe("memory");
+    expect(result.reply.toLowerCase()).toContain("apollo");
   });
 
   it("never lets note content posing as an instruction change behavior", async () => {

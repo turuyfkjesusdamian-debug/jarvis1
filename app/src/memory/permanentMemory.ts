@@ -77,10 +77,30 @@ export class PermanentMemory {
     return all.flat();
   }
 
+  /**
+   * Matches facts containing any word of the query (OR semantics), scored
+   * by how many words matched — a single-string exact-substring match
+   * would almost never hit for natural-language questions like "what do
+   * you remember about the project?" against a fact phrased differently.
+   */
   async search(query: string): Promise<MemoryFact[]> {
-    const q = query.toLowerCase();
+    const words = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 0);
+    if (words.length === 0) return [];
+
     const all = await this.listAll();
-    return all.filter((f) => f.text.toLowerCase().includes(q));
+    const scored = all
+      .map((f) => {
+        const text = f.text.toLowerCase();
+        const score = words.filter((w) => text.includes(w)).length;
+        return { fact: f, score };
+      })
+      .filter((s) => s.score > 0);
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map((s) => s.fact);
   }
 
   /** Removes the first fact whose text matches (case-insensitive substring). Returns true if removed. */

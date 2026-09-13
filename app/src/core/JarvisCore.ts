@@ -82,10 +82,10 @@ export class JarvisCore {
    * core/respond.ts for why this path is intentionally simple.
    */
   async handleTextMessage(utterance: string): Promise<HandleMessageResult> {
-    await this.memory.recordUtterance(utterance);
+    const justPersisted = await this.memory.recordUtterance(utterance);
     const intent = classifyIntent(utterance);
     const toolCalls = await gatherContext(intent, utterance, this.toolRouter);
-    const reply = composeReply(intent, toolCalls);
+    const reply = composeReply(intent, toolCalls, justPersisted);
     this.memory.session.addTurn({ role: "assistant", content: reply });
     await this.memory.flushSessionToDisk();
     return { intent, reply, toolCalls };

@@ -38,6 +38,13 @@ describe("shouldPersist", () => {
     expect(shouldPersist("What time is it?")).toMatchObject({ persist: false });
   });
 
+  it("does not persist a question just because it mentions a project or person", () => {
+    // Regression: "¿qué recuerdas sobre el proyecto?" used to get saved to
+    // projects.md as if it were a fact, because it matched PROJECT_PATTERNS.
+    expect(shouldPersist("¿Qué recuerdas sobre el proyecto?")).toMatchObject({ persist: false });
+    expect(shouldPersist("What do you know about my boss?")).toMatchObject({ persist: false });
+  });
+
   it("explicit instruction wins even if a project is also mentioned", () => {
     const decision = shouldPersist("Remember that the Apollo project deadline moved.");
     expect(decision.category).toBe("important-facts");

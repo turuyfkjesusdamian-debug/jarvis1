@@ -1,5 +1,6 @@
 import type { Intent } from "./intent.js";
 import type { ToolCallOutcome } from "./toolRouter.js";
+import type { MemoryFact } from "../memory/permanentMemory.js";
 
 /**
  * Deterministic, template-based reply composer used by the text-mode
@@ -8,8 +9,13 @@ import type { ToolCallOutcome } from "./toolRouter.js";
  * itself inside the Realtime session (see JARVIS/voice) — this exists so
  * the app is usable and testable without any external API. Tone follows
  * JARVIS/PERSONA.md.
+ *
+ * `justPersisted` is set when this same utterance was just written to
+ * permanent memory (see MemoryEngine.recordUtterance) — in that case the
+ * right reply is a plain confirmation ("Entendido, lo recordaré."), never
+ * an echo of the utterance itself back at the user.
  */
-export function composeReply(intent: Intent, outcomes: ToolCallOutcome[]): string {
+export function composeReply(intent: Intent, outcomes: ToolCallOutcome[], justPersisted?: MemoryFact): string {
   switch (intent) {
     case "tasks":
     case "schedule": {
@@ -32,11 +38,13 @@ export function composeReply(intent: Intent, outcomes: ToolCallOutcome[]): strin
       return "No pude buscar en el vault en este momento.";
     }
     case "memory": {
+      if (justPersisted) return "Entendido, lo recordaré.";
+
       const memOutcome = outcomes.find((o) => o.name === "memory.searchMemory");
       if (memOutcome?.result.ok) {
         const facts = memOutcome.result.data as { text: string }[];
         if (facts.length === 0) return "No tengo nada guardado sobre eso.";
-        return facts.map((f) => f.text).join(" ");
+        return `Esto es lo que tengo guardado: ${facts.map((f) => f.text).join("; ")}.`;
       }
       return "No pude consultar la memoria en este momento.";
     }

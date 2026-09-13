@@ -1,6 +1,7 @@
 import type { Intent } from "./intent.js";
 import type { ToolRouter } from "./toolRouter.js";
 import type { ToolCallOutcome } from "./toolRouter.js";
+import { extractKeywords } from "./keywords.js";
 
 /**
  * Maps intent → the minimal set of deterministic tool calls worth
@@ -25,24 +26,15 @@ export async function gatherContext(
       const keywords = extractKeywords(utterance);
       return [await router.call({ name: "obsidian.searchNotes", params: { keywords, limit: 5 } })];
     }
-    case "memory":
-      return [await router.call({ name: "memory.searchMemory", params: { query: utterance } })];
+    case "memory": {
+      const keywords = extractKeywords(utterance);
+      // Fall back to the raw utterance if nothing survived keyword
+      // extraction (e.g. a very short question) so search still runs.
+      const query = keywords.length > 0 ? keywords.join(" ") : utterance;
+      return [await router.call({ name: "memory.searchMemory", params: { query } })];
+    }
     case "general":
     default:
       return [];
   }
-}
-
-const STOPWORDS = new Set([
-  "el", "la", "los", "las", "de", "que", "y", "a", "en", "un", "una",
-  "the", "a", "an", "of", "to", "in", "is", "what", "do", "i", "have",
-]);
-
-function extractKeywords(utterance: string): string[] {
-  return utterance
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, "")
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOPWORDS.has(w))
-    .slice(0, 8);
 }

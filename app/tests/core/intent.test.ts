@@ -12,9 +12,14 @@ describe("classifyIntent", () => {
     expect(classifyIntent("Add a new task")).toBe("tasks");
   });
 
-  it("classifies memory requests", () => {
+  it("classifies memory save requests", () => {
     expect(classifyIntent("Recuérdame que esto es importante")).toBe("memory");
     expect(classifyIntent("Remember this for later")).toBe("memory");
+  });
+
+  it("classifies memory recall questions, not just save instructions", () => {
+    expect(classifyIntent("¿Qué recuerdas sobre el proyecto?")).toBe("memory");
+    expect(classifyIntent("Do you remember what I told you about Ada?")).toBe("memory");
   });
 
   it("classifies note/vault questions", () => {
