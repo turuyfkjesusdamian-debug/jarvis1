@@ -3,16 +3,18 @@
 ## Requirements
 
 - Node.js 20+ (developed against Node 22).
-- No external services required to develop or test — OpenAI is mocked in
-  tests, and a fixtures vault (`app/fixtures/vault/`) stands in for a real
-  Obsidian vault.
+- No external services required to develop or test — Gemini and ElevenLabs
+  are both mocked in tests, and a fixtures vault (`app/fixtures/vault/`)
+  stands in for a real Obsidian vault.
+- Voice mode needs a Chromium-based browser (Chrome/Edge) for the Web
+  Speech API (`SpeechRecognition`) — no server-side setup for that part.
 
 ## Setup
 
 ```bash
 cd app
 npm install
-cp .env.example .env   # then fill in OPENAI_API_KEY for voice features
+cp .env.example .env   # then fill in GEMINI_API_KEY / ELEVENLABS_* to enable those features
 ```
 
 ## Running
@@ -22,8 +24,12 @@ cd app
 npm run dev      # starts the server with the TypeScript source (tsx watch)
 ```
 
-Open `http://localhost:3939` (or `$JARVIS_PORT`). The UI works in
-text-chat mode without any API key; voice mode requires `OPENAI_API_KEY`.
+Open `http://localhost:3939` (or `$JARVIS_PORT`). Tasks/schedule/notes/
+memory and text chat all work with zero API keys. General chit-chat gets a
+real conversational reply only when `GEMINI_API_KEY` is set (otherwise a
+static template). Replies are spoken aloud only when `ELEVENLABS_API_KEY` +
+`ELEVENLABS_VOICE_ID` are set. Voice *input* (the mic button) needs no key
+at all, only a Chromium-based browser.
 
 Build/run compiled:
 ```bash
@@ -52,8 +58,8 @@ npm run test:watch
 
 - No real API key or real vault is needed. `app/fixtures/vault/` is a
   small self-contained vault used by indexer/retrieval/memory tests.
-- OpenAI Realtime calls are mocked at the module boundary
-  (`app/tests/**/__mocks__`) — no network access in tests.
+- Gemini and ElevenLabs calls are mocked (stubbed `fetch`) at the test
+  level — no network access in tests.
 - Every new tool must have a test that checks: schema rejects bad input,
   `run` returns a structured result for a valid case, and (if
   destructive) that it refuses to run without confirmation.
@@ -86,7 +92,7 @@ app/
 │   ├── memory/     # session / short-term / permanent memory
 │   ├── obsidian/   # indexer, reader, retrieval
 │   ├── tools/      # obsidian/, tasks/, memory/, system/ tool groups + registry
-│   ├── voice/      # OpenAI Realtime integration
+│   ├── voice/      # Gemini (text replies) + ElevenLabs (speech synthesis) clients
 │   ├── logging/    # structured logger
 │   └── server/     # Express app + routes + static UI serving
 ├── public/         # minimal web UI (status, conversation, text fallback)

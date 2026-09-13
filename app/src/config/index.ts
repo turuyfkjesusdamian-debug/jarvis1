@@ -12,30 +12,32 @@ const appDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..
 dotenv.config({ path: path.join(appDir, ".env"), quiet: true });
 
 const envSchema = z.object({
-  OPENAI_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
+  // See JARVIS/ARCHITECTURE.md § Decisions for why this default (chosen
+  // 2026-09-13; check ai.google.dev/gemini-api/docs/models if it's ever
+  // deprecated and this stops working).
+  GEMINI_MODEL: z.string().default("gemini-3.5-flash"),
+  ELEVENLABS_API_KEY: z.string().optional(),
+  ELEVENLABS_VOICE_ID: z.string().optional(),
   JARVIS_VAULT_PATH: z.string().default(".."),
   JARVIS_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   JARVIS_ENV: z.enum(["development", "test", "production"]).default("development"),
   JARVIS_PORT: z.coerce.number().int().positive().optional(),
   // Standard variable injected by most hosting platforms (Render, Heroku,
   // Railway, ...) to say which port the app must bind to. Takes priority
-  // over JARVIS_PORT when both are present — see getConfig() below.
+  // over JARVIS_PORT when present — see getConfig() below.
   PORT: z.coerce.number().int().positive().optional(),
-  JARVIS_REALTIME_MODEL: z.string().default("gpt-realtime"),
-  // Used only for the text-chat fallback's general-conversation replies
-  // (see voice/textCompletion.ts) — a plain Chat Completions model, not
-  // the Realtime one above.
-  JARVIS_TEXT_MODEL: z.string().default("gpt-4o-mini"),
 });
 
 export type JarvisConfig = {
-  openaiApiKey: string | undefined;
+  geminiApiKey: string | undefined;
+  geminiModel: string;
+  elevenLabsApiKey: string | undefined;
+  elevenLabsVoiceId: string | undefined;
   vaultPath: string;
   logLevel: "debug" | "info" | "warn" | "error";
   env: "development" | "test" | "production";
   port: number;
-  realtimeModel: string;
-  textModel: string;
   appDir: string;
 };
 
@@ -49,13 +51,14 @@ function load(): JarvisConfig {
   }
   const env = parsed.data;
   return {
-    openaiApiKey: env.OPENAI_API_KEY,
+    geminiApiKey: env.GEMINI_API_KEY,
+    geminiModel: env.GEMINI_MODEL,
+    elevenLabsApiKey: env.ELEVENLABS_API_KEY,
+    elevenLabsVoiceId: env.ELEVENLABS_VOICE_ID,
     vaultPath: path.resolve(appDir, env.JARVIS_VAULT_PATH),
     logLevel: env.JARVIS_LOG_LEVEL,
     env: env.JARVIS_ENV,
     port: env.PORT ?? env.JARVIS_PORT ?? 3939,
-    realtimeModel: env.JARVIS_REALTIME_MODEL,
-    textModel: env.JARVIS_TEXT_MODEL,
     appDir,
   };
 }
@@ -73,12 +76,21 @@ export function resetConfigForTests(): void {
   cached = undefined;
 }
 
-/** Fails fast if voice features are used without a key configured. */
-export function requireOpenAiKey(cfg: JarvisConfig): string {
-  if (!cfg.openaiApiKey) {
-    throw new Error(
-      "OPENAI_API_KEY is not set. Voice features require it — see JARVIS/CONFIG.md."
-    );
+/** Fails fast if the conversational brain is used without Gemini configured. */
+export function requireGeminiConfig(cfg: JarvisConfig): { apiKey: string; model: string } {
+  if (!cfg.geminiApiKey) {
+    throw new Error("GEMINI_API_KEY is not set. Conversational replies require it — see JARVIS/CONFIG.md.");
   }
-  return cfg.openaiApiKey;
+  return { apiKey: cfg.geminiApiKey, model: cfg.geminiModel };
+}
+
+/** Fails fast if speech synthesis is used without ElevenLabs configured. */
+export function requireElevenLabsConfig(cfg: JarvisConfig): { apiKey: string; voiceId: string } {
+  if (!cfg.elevenLabsApiKey) {
+    throw new Error("ELEVENLABS_API_KEY is not set. Speech synthesis requires it — see JARVIS/CONFIG.md.");
+  }
+  if (!cfg.elevenLabsVoiceId) {
+    throw new Error("ELEVENLABS_VOICE_ID is not set. Speech synthesis requires it — see JARVIS/CONFIG.md.");
+  }
+  return { apiKey: cfg.elevenLabsApiKey, voiceId: cfg.elevenLabsVoiceId };
 }

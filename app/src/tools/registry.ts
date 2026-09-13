@@ -19,7 +19,7 @@ export class ToolRegistry {
     return [...this.tools.values()];
   }
 
-  /** OpenAI Realtime "tools" definitions derived from the registry (JSON-schema-ish). */
+  /** Lightweight name+description listing, used by the debug tool-listing endpoint. */
   describeForModel(): { name: string; description: string }[] {
     return this.list().map((t) => ({ name: t.name, description: t.description }));
   }

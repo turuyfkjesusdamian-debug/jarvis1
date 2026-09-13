@@ -4,7 +4,15 @@ type Level = "debug" | "info" | "warn" | "error";
 
 const LEVEL_ORDER: Record<Level, number> = { debug: 0, info: 1, warn: 2, error: 3 };
 
-const SECRET_KEYS = new Set(["apikey", "api_key", "openaiapikey", "token", "authorization", "secret"]);
+const SECRET_KEYS = new Set([
+  "apikey",
+  "api_key",
+  "geminiapikey",
+  "elevenlabsapikey",
+  "token",
+  "authorization",
+  "secret",
+]);
 
 /** Recursively strips likely-secret fields before anything is logged. */
 function redact(value: unknown, depth = 0): unknown {

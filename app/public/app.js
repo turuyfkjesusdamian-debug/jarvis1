@@ -1,6 +1,10 @@
-// Minimal JARVIS web UI: text-mode chat (always available) + voice mode
-// (OpenAI Realtime over WebRTC, requires OPENAI_API_KEY configured
-// server-side). See JARVIS/ARCHITECTURE.md for the overall data flow.
+// JARVIS web UI. Voice mode: the browser's own speech recognition
+// transcribes what you say (free, no API key), sends it through the exact
+// same pipeline as typing in the text box, and speaks the reply back with
+// ElevenLabs. See JARVIS/ARCHITECTURE.md § Decisions for why this replaced
+// the earlier OpenAI Realtime WebRTC approach.
+
+let speechSynthesisConfigured = false;
 
 const orb = createJarvisOrb(document.getElementById("orb-canvas"));
 
@@ -42,15 +46,16 @@ function logError(message) {
   errorLogEl.prepend(li);
 }
 
-// --- Orb audio reactivity: real amplitude from OpenAI's own Realtime
-// voice output during a voice session, plus a lighter reaction to the
-// user's own mic input while listening. The orb just renders whatever
-// energy value it's given each frame — see orb.js. Text-mode chat has no
-// audio output, so it doesn't drive the orb.
+// --- Audio: ElevenLabs playback + orb reactivity ---
+// Two independent analysers: one on the ElevenLabs playback element
+// (JARVIS speaking), one on the raw mic stream (user speaking, lighter
+// weight) — see driveOrb() below.
 
 let audioCtx = null;
-let voiceAnalyser = null;
+let ttsAnalyser = null;
+let ttsSource = null;
 let micAnalyser = null;
+const ttsAudioEl = new Audio();
 
 function ensureAudioContext() {
   if (!audioCtx) {
@@ -60,6 +65,21 @@ function ensureAudioContext() {
     audioCtx.resume().catch(() => {});
   }
   return audioCtx;
+}
+
+/** createMediaElementSource can only be called once per <audio> element — set up lazily, once. */
+function ensureTtsAnalyser() {
+  const ctx = ensureAudioContext();
+  if (!ttsSource) {
+    ttsSource = ctx.createMediaElementSource(ttsAudioEl);
+    ttsAnalyser = ctx.createAnalyser();
+    ttsAnalyser.fftSize = 256;
+    // Route back to the speakers — createMediaElementSource otherwise
+    // silently captures the audio into the Web Audio graph instead of
+    // letting it play normally.
+    ttsSource.connect(ttsAnalyser);
+    ttsAnalyser.connect(ctx.destination);
+  }
 }
 
 function analyserEnergy(analyser) {
@@ -72,23 +92,46 @@ function analyserEnergy(analyser) {
 }
 
 function driveOrb() {
-  const voiceEnergy = analyserEnergy(voiceAnalyser);
+  const ttsEnergy = !ttsAudioEl.paused ? analyserEnergy(ttsAnalyser) : 0;
   const micEnergy = analyserEnergy(micAnalyser) * 0.45; // secondary, dampened "listening" cue
-  orb.setEnergy(Math.max(voiceEnergy, micEnergy));
+  orb.setEnergy(Math.max(ttsEnergy, micEnergy));
   requestAnimationFrame(driveOrb);
 }
 requestAnimationFrame(driveOrb);
+
+/** Fetches ElevenLabs-synthesized speech for text and plays it. No-op if not configured. */
+async function speak(text) {
+  if (!speechSynthesisConfigured || !text) return;
+  try {
+    ensureTtsAnalyser();
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "TTS request failed");
+    }
+    const blob = await res.blob();
+    ttsAudioEl.src = URL.createObjectURL(blob);
+    await ttsAudioEl.play();
+  } catch (err) {
+    logError(`Speech synthesis failed: ${err}`);
+  }
+}
 
 async function refreshStatus() {
   try {
     const res = await fetch("/api/status");
     const data = await res.json();
     configJsonEl.textContent = JSON.stringify(data, null, 2);
+    speechSynthesisConfigured = Boolean(data.speechSynthesisConfigured);
     setPill(connStatusEl, "connection: ok", "ok");
     setPill(
       assistantStatusEl,
-      data.voiceConfigured ? "assistant: voice ready" : "assistant: text-only",
-      data.voiceConfigured ? "ok" : "warn"
+      data.geminiConfigured ? "assistant: brain ready" : "assistant: templates only",
+      data.geminiConfigured ? "ok" : "warn"
     );
   } catch (err) {
     setPill(connStatusEl, "connection: error", "error");
@@ -96,15 +139,11 @@ async function refreshStatus() {
   }
 }
 
-// --- Text-mode chat (always available, no API key required) ---
+// --- Shared send path: used by both the text box and voice transcripts ---
 
-chatForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const message = chatInput.value.trim();
+async function sendMessage(message) {
   if (!message) return;
-  chatInput.value = "";
   addTurn("user", message);
-
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -120,159 +159,107 @@ chatForm.addEventListener("submit", async (e) => {
     if (data.debugError) {
       logError(`Conversational reply failed, showed the fallback instead: ${data.debugError}`);
     }
+    speak(data.reply);
   } catch (err) {
     logError(`Chat failed: ${err}`);
   }
+}
+
+chatForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  ensureAudioContext(); // must happen synchronously within the user gesture for autoplay to work
+  const message = chatInput.value.trim();
+  chatInput.value = "";
+  await sendMessage(message);
 });
 
-// --- Voice mode (OpenAI Realtime over WebRTC) ---
+// --- Voice mode: browser speech recognition -> sendMessage() -> ElevenLabs ---
 
-let peerConnection = null;
-let dataChannel = null;
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+let recognition = null;
 let micStream = null;
 let voiceActive = false;
 
-async function executeToolCall(name, argsJson, callId) {
-  let params = {};
-  try {
-    params = argsJson ? JSON.parse(argsJson) : {};
-  } catch {
-    // leave params empty; the server-side schema validation will reject as needed
-  }
-
-  let confirmed = false;
-  const destructiveHint = /forget|delete|remove/i.test(name);
-  if (destructiveHint) {
-    confirmed = window.confirm(`JARVIS wants to run "${name}". This may be irreversible. Allow it?`);
-  }
-
-  const res = await fetch(`/api/tools/${encodeURIComponent(name)}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ params, confirmed }),
-  });
-  const result = await res.json();
-  logTool(name, result.ok);
-
-  dataChannel.send(
-    JSON.stringify({
-      type: "conversation.item.create",
-      item: {
-        type: "function_call_output",
-        call_id: callId,
-        output: JSON.stringify(result),
-      },
-    })
-  );
-  dataChannel.send(JSON.stringify({ type: "response.create" }));
-}
-
-function handleRealtimeEvent(event) {
-  switch (event.type) {
-    case "response.function_call_arguments.done":
-      executeToolCall(event.name, event.arguments, event.call_id).catch((err) =>
-        logError(`Tool execution failed: ${err}`)
-      );
-      break;
-    case "conversation.item.input_audio_transcription.completed":
-      if (event.transcript) addTurn("user", event.transcript);
-      break;
-    case "response.audio_transcript.done":
-      if (event.transcript) addTurn("assistant", event.transcript);
-      break;
-    case "error":
-      logError(event.error?.message || "Realtime error");
-      break;
-    default:
-      break;
-  }
-}
-
 async function startVoice() {
+  if (!SpeechRecognitionCtor) {
+    logError("This browser doesn't support speech recognition. Try Chrome or Edge.");
+    return;
+  }
   setPill(micStatusEl, "mic: requesting…", "warn");
+  ensureAudioContext();
+
   try {
-    const sessionRes = await fetch("/api/realtime/session", { method: "POST" });
-    const session = await sessionRes.json();
-    if (!sessionRes.ok) throw new Error(session.error || "Could not start voice session");
-
+    // Requested separately from SpeechRecognition (which manages its own
+    // mic access internally) purely so the orb can react to your voice.
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ctx = ensureAudioContext();
+    const micSource = ctx.createMediaStreamSource(micStream);
+    micAnalyser = ctx.createAnalyser();
+    micAnalyser.fftSize = 256;
+    micSource.connect(micAnalyser); // analysis only, never routed to destination
     setPill(micStatusEl, "mic: live", "ok");
-
-    peerConnection = new RTCPeerConnection();
-    peerConnection.ontrack = (e) => {
-      const audioEl = document.createElement("audio");
-      audioEl.autoplay = true;
-      audioEl.srcObject = e.streams[0];
-      document.body.appendChild(audioEl);
-
-      const ctx = ensureAudioContext();
-      const source = ctx.createMediaStreamSource(e.streams[0]);
-      voiceAnalyser = ctx.createAnalyser();
-      voiceAnalyser.fftSize = 256;
-      source.connect(voiceAnalyser); // analysis only — audioEl already handles playback
-    };
-    for (const track of micStream.getTracks()) {
-      peerConnection.addTrack(track, micStream);
-    }
-
-    {
-      const ctx = ensureAudioContext();
-      const micSource = ctx.createMediaStreamSource(micStream);
-      micAnalyser = ctx.createAnalyser();
-      micAnalyser.fftSize = 256;
-      micSource.connect(micAnalyser); // analysis only, never routed to destination
-    }
-
-    dataChannel = peerConnection.createDataChannel("oai-events");
-    dataChannel.onmessage = (e) => handleRealtimeEvent(JSON.parse(e.data));
-
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-
-    // As of 2026, the WebRTC SDP exchange endpoint is /v1/realtime/calls
-    // (no ?model= query param — the model is already bound to the
-    // ephemeral client secret from /v1/realtime/client_secrets). The
-    // older /v1/realtime?model=... endpoint from most 2025 tutorials
-    // returns 404 now.
-    const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
-      method: "POST",
-      body: offer.sdp,
-      headers: {
-        Authorization: `Bearer ${session.clientSecret}`,
-        "Content-Type": "application/sdp",
-      },
-    });
-    const answerSdp = await sdpRes.text();
-    await peerConnection.setRemoteDescription({ type: "answer", sdp: answerSdp });
-
-    voiceActive = true;
-    micButton.textContent = "🎤 Stop voice";
-    micButton.classList.add("listening");
-    setPill(assistantStatusEl, "assistant: listening", "ok");
   } catch (err) {
     setPill(micStatusEl, "mic: error", "error");
-    logError(`Voice start failed: ${err}`);
-    stopVoice();
+    logError(`Microphone access failed: ${err}`);
+    return;
   }
+
+  recognition = new SpeechRecognitionCtor();
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.lang = "es-ES";
+
+  recognition.onresult = (event) => {
+    const result = event.results[event.results.length - 1];
+    const transcript = result?.[0]?.transcript?.trim();
+    if (result?.isFinal && transcript) {
+      sendMessage(transcript);
+    }
+  };
+
+  recognition.onerror = (event) => {
+    if (event.error !== "no-speech") {
+      logError(`Speech recognition error: ${event.error}`);
+    }
+  };
+
+  recognition.onend = () => {
+    // Browsers auto-stop recognition after a period of silence even with
+    // continuous=true — restart it seamlessly while voice mode is on.
+    if (voiceActive) {
+      try {
+        recognition.start();
+      } catch {
+        // already starting — harmless
+      }
+    }
+  };
+
+  recognition.start();
+  voiceActive = true;
+  micButton.textContent = "🎤 Stop voice";
+  micButton.classList.add("listening");
+  setPill(assistantStatusEl, "assistant: listening", "ok");
 }
 
 function stopVoice() {
   voiceActive = false;
   micButton.textContent = "🎤 Start voice";
   micButton.classList.remove("listening");
+  if (recognition) {
+    recognition.onend = null;
+    recognition.stop();
+    recognition = null;
+  }
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
-  if (peerConnection) peerConnection.close();
   micStream = null;
-  peerConnection = null;
-  dataChannel = null;
-  voiceAnalyser = null;
   micAnalyser = null;
   setPill(micStatusEl, "mic: idle");
   setPill(assistantStatusEl, "assistant: idle");
 }
 
 micButton.addEventListener("click", () => {
-  ensureAudioContext();
   if (voiceActive) stopVoice();
   else startVoice();
 });

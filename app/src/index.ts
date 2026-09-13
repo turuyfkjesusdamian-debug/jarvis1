@@ -7,7 +7,7 @@ async function main(): Promise<void> {
   const { app } = await createApp(cfg.vaultPath);
 
   app.listen(cfg.port, () => {
-    logger.info("JARVIS server listening", { port: cfg.port, env: cfg.env, voiceConfigured: Boolean(cfg.openaiApiKey) });
+    logger.info("JARVIS server listening", { port: cfg.port, env: cfg.env, geminiConfigured: Boolean(cfg.geminiApiKey) });
   });
 }
 

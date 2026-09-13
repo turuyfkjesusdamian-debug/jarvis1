@@ -9,12 +9,16 @@ updated: 2026-09-13
 ## Current state: v1 (text + voice-ready) working end to end
 
 First development session, completed in full through Phase 10 (hardening),
-plus same-day follow-ups: ElevenLabs speech output was added, then removed
-again at the user's request (single-provider voice again — see
-`JARVIS/ARCHITECTURE.md` § Decisions); the UI was redesigned around an
-audio-reactive, drag-to-spin particle sphere; and several text-mode bugs
-found via live user testing were fixed. 100/100 tests pass
-(`cd app && npm test`), `npm run typecheck` and `npm run build` are clean.
+plus same-day follow-ups: ElevenLabs speech output was added, then removed,
+then re-added; the UI was redesigned around an audio-reactive, drag-to-spin
+particle sphere; several text-mode bugs found via live user testing were
+fixed; and — the latest change — OpenAI was removed entirely (billing
+became a blocker for the user) in favor of a three-part split: the
+browser's own Web Speech API for listening, Google Gemini for
+general-intent text replies, and ElevenLabs for speech output (see
+`JARVIS/ARCHITECTURE.md` § Decisions for the full rationale). 97/97 tests
+pass (`cd app && npm test`), `npm run typecheck` and `npm run build` are
+clean.
 
 ## What exists
 
@@ -49,31 +53,34 @@ found via live user testing were fixed. 100/100 tests pass
   session memory + `JARVIS/STATE/last-actions.md`, reindexes the vault
   after any write/destructive call), `JarvisCore` facade. Replies:
   tasks/schedule/notes/memory intents use a deterministic templated
-  reply (`core/respond.ts`, no model call); "general" chit-chat calls a
-  real Chat Completions model (`voice/textCompletion.ts`,
-  `JARVIS_TEXT_MODEL`) when `OPENAI_API_KEY` is set, falling back to the
-  template if not configured or the call fails.
-- **Voice** (`app/src/voice/`): `createEphemeralRealtimeSession` mints a
-  short-lived OpenAI Realtime token server-side (the long-lived
-  `OPENAI_API_KEY` never leaves this function); tool schemas are
-  auto-derived from the tool registry via a small zod→JSON-Schema
-  converter (`tools/jsonSchema.ts`). Single provider end-to-end: OpenAI
-  Realtime handles listening, reasoning, tool-calling, and its own
-  built-in voice for speech output (no ElevenLabs — tried and reverted
-  same day, see `JARVIS/ARCHITECTURE.md` § Decisions).
+  reply (`core/respond.ts`, no model call); "general" chit-chat calls
+  Gemini (`voice/geminiClient.ts`, `GEMINI_MODEL`) when `GEMINI_API_KEY`
+  is set, falling back to the template if not configured or the call
+  fails. Text chat and voice mode share this exact same code path — there
+  is no separate "realtime session" concept.
+- **Voice** (`app/src/voice/`): two independent, provider-specific
+  clients — `geminiClient.ts` (general-intent text replies) and
+  `elevenLabsClient.ts` (speech synthesis, `POST /api/tts`). Speech
+  *input* is handled entirely client-side by the browser's Web Speech API
+  (`SpeechRecognition`), so there's no server-side STT code at all. OpenAI
+  (Realtime API and Chat Completions) has been removed completely — see
+  `JARVIS/ARCHITECTURE.md` § Decisions for the full history (ElevenLabs
+  was added, removed, then re-added the same day; OpenAI was replaced
+  last).
 - **Server** (`app/src/server/`): Express app serving the static UI plus
-  `/api/{status,chat,tools,realtime/session}`. `/api/tools/:name`
-  requires `confirmed: true` in the body for destructive tools.
+  `/api/{status,chat,tools,tts}`. `/api/tools/:name` requires
+  `confirmed: true` in the body for destructive tools.
 - **UI** (`app/public/`): a purple, audio-reactive particle sphere
   (`orb.js`, pure Canvas 2D, no dependencies) as the visual centerpiece —
-  real amplitude from OpenAI's Realtime audio track (plus a lighter
-  reaction to the mic) drives its scale/brightness/spin speed, and it can
-  be dragged/flicked to spin manually with inertia. Conversation, tool
-  activity, errors, and config are tucked into a collapsible panel so the
-  sphere stays the focus. Text-chat fallback works without any API key
-  (no speech output in this mode); voice mode is the WebRTC flow through
-  `/api/realtime/session` and `/api/tools/:name`.
-- **Tests** (`app/tests/`, 100 tests / 18 files): indexer, retrieval,
+  real amplitude from ElevenLabs's TTS audio (plus a lighter reaction to
+  the mic) drives its scale/brightness/spin speed, and it can be
+  dragged/flicked to spin manually with inertia (unclamped on both axes).
+  Conversation, tool activity, errors, and config are tucked into a
+  collapsible panel so the sphere stays the focus. Text chat works
+  without any API key; voice mode adds mic transcription via
+  `SpeechRecognition` and spoken replies via `/api/tts`, both optional
+  and independently gated by browser support / `ELEVENLABS_*` config.
+- **Tests** (`app/tests/`, 97 tests / 17 files): indexer, retrieval,
   reader (incl. path-traversal rejection), both memory tiers + the
   persistence heuristic (incl. the question-vs-statement fix), every tool
   group, the registry's validation/permission/confirmation logic, intent
@@ -81,26 +88,40 @@ found via live user testing were fixed. 100/100 tests pass
   flow (including a test that a note containing "ignore all previous
   instructions" is treated as inert data, per `JARVIS/SECURITY.md`, and
   tests for the conversational-reply path with/without a key and on
-  failure), and the realtime + text-completion clients with `fetch`
-  mocked (no network, no real API key needed — `vitest.config.ts` forces
-  `OPENAI_API_KEY` empty for every test run regardless of the local
-  `app/.env`).
+  failure), and the Gemini + ElevenLabs clients with `fetch` mocked (no
+  network, no real API key needed — `vitest.config.ts` forces
+  `GEMINI_API_KEY`/`ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID` empty for
+  every test run regardless of the local `app/.env`).
 
 ## What's missing / next steps
 
-- **Not tested against the live OpenAI Realtime API or a real
-  microphone/browser from this sandbox** — its network egress allowlist
-  blocks `api.openai.com` (confirmed live: "Host not in allowlist",
-  unrelated to the key itself). The user has deployed to Render
-  (`jarvis-12lx.onrender.com`) to test with real network access instead;
-  as of this writing they were mid-way through getting environment
-  variables configured there (see the deploy's "Environment" tab — must
-  include at least `OPENAI_API_KEY`, `JARVIS_VAULT_PATH=..`,
-  `JARVIS_ENV=production`). The UI/orb changes were verified visually
-  with headless Chromium in this sandbox (screenshots, no console
-  errors) since that's the only check available here — real
-  microphone + live Realtime audio still needs verification on a real
-  device.
+- **Render's environment variables still need updating for this
+  migration.** The deploy (`jarvis-12lx.onrender.com`) still has the old
+  `OPENAI_API_KEY`/`JARVIS_REALTIME_MODEL`/`JARVIS_TEXT_MODEL` variables
+  from the previous setup. They need to be replaced with `GEMINI_API_KEY`,
+  `GEMINI_MODEL=gemini-3.5-flash` (`ELEVENLABS_API_KEY`/
+  `ELEVENLABS_VOICE_ID` were already correct and can stay), then the
+  service redeployed, before the user can test the new flow on their
+  phone.
+- **Gemini was live-verified working from this sandbox** (unlike OpenAI,
+  `generativelanguage.googleapis.com` is not blocked by this sandbox's
+  network egress allowlist) — real conversational replies confirmed via
+  direct `curl` against a locally-run server. **ElevenLabs is still
+  blocked in this sandbox** (`api.elevenlabs.io` — confirmed via a live
+  403 "Host not in allowlist"), consistent with every prior finding; it
+  must be verified on Render instead.
+- **The browser Web Speech API voice loop has never been exercised with a
+  real microphone in this session** — only the orb's visuals were checked
+  with headless Chromium (screenshots, no console errors, no real speech
+  recognition). The user needs to test the mic button on their actual
+  phone/browser once Render's env vars are updated.
+- **Known, unchanged scope gap**: natural-language voice/text commands
+  don't route to write-capable tools (`tasks.createTask`,
+  `memory.saveMemory` via explicit command, etc.) beyond the existing
+  `shouldPersist` heuristic for memory. This was already true before the
+  Gemini swap — Gemini's role, like OpenAI's before it, is scoped to
+  general chit-chat only, not tool-calling — so "create a task by voice"
+  still won't work; flag this to the user if they expect it.
 - Calendar/email/weather/web-search tools, semantic/vector retrieval,
   multi-agent routing, a native desktop shell, and a proactive/background
   daemon are all designed for (see `JARVIS/ARCHITECTURE.md` § 6) but
@@ -120,15 +141,18 @@ found via live user testing were fixed. 100/100 tests pass
 
 See `JARVIS/ARCHITECTURE.md` § Decisions for the architectural log
 (stack choice, no-vector-DB-in-v1, vault+app co-location, the
-ElevenLabs add-then-revert, the orb UI).
+ElevenLabs add/revert/re-add, the orb UI, and the full OpenAI → Gemini +
+ElevenLabs + browser Web Speech API migration).
 
 ## How to resume
 
 1. Read `JARVIS/AGENTS.md`, then this file.
 2. `cd app && npm install && npm test && npm run typecheck` — should be
    green before you change anything.
-3. `cp app/.env.example app/.env` and fill in `OPENAI_API_KEY` to exercise
-   voice; text-mode (`npm run dev`, then open the UI or `POST /api/chat`)
-   works with no key at all.
+3. `cp app/.env.example app/.env` and fill in `GEMINI_API_KEY` for real
+   general-chit-chat replies and `ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID`
+   for spoken replies; text-mode (`npm run dev`, then open the UI or
+   `POST /api/chat`) works with no keys at all otherwise. Voice input
+   (the mic button) needs a Chromium-based browser, no key.
 4. Whatever you build, update the relevant `JARVIS/*.md` doc and this
    file — see `JARVIS/DEVELOPMENT.md` § "Adding a feature — checklist".

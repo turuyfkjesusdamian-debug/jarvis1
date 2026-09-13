@@ -104,7 +104,7 @@ describe("JarvisCore", () => {
     }
   });
 
-  it("uses the templated fallback for general chit-chat when no OpenAI key is configured", async () => {
+  it("uses the templated fallback for general chit-chat when no Gemini key is configured", async () => {
     const vault = await createTempVault();
     cleanup = vault.cleanup;
     const core = new JarvisCore(vault.vaultPath);
@@ -115,18 +115,18 @@ describe("JarvisCore", () => {
     expect(result.reply).toBe("Entendido.");
   });
 
-  it("uses a real conversational reply for general chit-chat when an OpenAI key is configured", async () => {
+  it("uses a real conversational reply for general chit-chat when a Gemini key is configured", async () => {
     const vault = await createTempVault();
     cleanup = vault.cleanup;
-    const previousKey = process.env.OPENAI_API_KEY;
-    process.env.OPENAI_API_KEY = "sk-test";
+    const previousKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = "test-key";
     resetConfigForTests();
 
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
         ok: true,
-        json: async () => ({ choices: [{ message: { content: "¡Muy bien! ¿Y tú?" } }] }),
+        json: async () => ({ candidates: [{ content: { parts: [{ text: "¡Muy bien! ¿Y tú?" }] } }] }),
       } as Response))
     );
 
@@ -139,7 +139,7 @@ describe("JarvisCore", () => {
       expect(result.debugError).toBeUndefined();
     } finally {
       vi.unstubAllGlobals();
-      process.env.OPENAI_API_KEY = previousKey;
+      process.env.GEMINI_API_KEY = previousKey;
       resetConfigForTests();
     }
   });
@@ -147,8 +147,8 @@ describe("JarvisCore", () => {
   it("falls back to the templated reply if the conversational call fails", async () => {
     const vault = await createTempVault();
     cleanup = vault.cleanup;
-    const previousKey = process.env.OPENAI_API_KEY;
-    process.env.OPENAI_API_KEY = "sk-test";
+    const previousKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = "test-key";
     resetConfigForTests();
 
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500, text: async () => "boom" } as Response)));
@@ -163,7 +163,7 @@ describe("JarvisCore", () => {
       expect(result.debugError).toMatch(/500/);
     } finally {
       vi.unstubAllGlobals();
-      process.env.OPENAI_API_KEY = previousKey;
+      process.env.GEMINI_API_KEY = previousKey;
       resetConfigForTests();
     }
   });

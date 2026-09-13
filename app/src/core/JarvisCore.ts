@@ -13,7 +13,7 @@ import { PERSONA_SYSTEM_PROMPT } from "./persona.js";
 import { logger } from "../logging/logger.js";
 import type { ToolCallOutcome } from "./toolRouter.js";
 import { getConfig } from "../config/index.js";
-import { generateConversationalReply, type ChatTurn } from "../voice/textCompletion.js";
+import { generateConversationalReply, type ChatTurn } from "../voice/geminiClient.js";
 
 const INDEX_RELATIVE_PATH = "JARVIS/INDEX/vault-index.json";
 
@@ -23,18 +23,18 @@ export interface HandleMessageResult {
   toolCalls: ToolCallOutcome[];
   /**
    * Set when a conversational model call was attempted and failed (e.g.
-   * OPENAI_API_KEY configured but the request errored) — `reply` is still
+   * GEMINI_API_KEY configured but the request errored) — `reply` is still
    * the safe templated fallback, but surfacing this lets the UI show the
    * real reason instead of a silent, unexplained "Entendido.". Never a
-   * secret: textCompletion.ts's errors never include the API key.
+   * secret: geminiClient.ts's errors never include the API key.
    */
   debugError?: string;
 }
 
 /**
  * Top-level orchestration facade. See JARVIS/ARCHITECTURE.md. Holds no
- * OpenAI-specific knowledge — voice/ and server/ depend on this, not the
- * other way around.
+ * provider-specific knowledge itself — voice/ and server/ depend on this,
+ * not the other way around.
  */
 export class JarvisCore {
   readonly vaultReader: VaultReader;
@@ -86,15 +86,15 @@ export class JarvisCore {
   }
 
   /**
-   * Text-mode fallback: classify intent, deterministically gather the
-   * minimal context via tools, and compose a reply. Tasks/schedule/notes/
-   * memory intents always use the templated, deterministic reply in
+   * Handles both typed and spoken input (voice mode transcribes speech
+   * client-side and calls this exact same path — see JARVIS/ARCHITECTURE.md
+   * § Decisions). Classifies intent, deterministically gathers the minimal
+   * context via tools, and composes a reply. Tasks/schedule/notes/memory
+   * intents always use the templated, deterministic reply in
    * core/respond.ts (no model call, no network). "general" (small talk,
    * open-ended questions) uses a real conversational model call when
-   * OPENAI_API_KEY is configured, falling back to the static template
-   * otherwise or if the call fails — see voice/textCompletion.ts. Real
-   * voice conversations go through voice/RealtimeSession instead, where
-   * the model itself drives tool-calling throughout.
+   * GEMINI_API_KEY is configured, falling back to the static template
+   * otherwise or if the call fails — see voice/geminiClient.ts.
    */
   async handleTextMessage(utterance: string): Promise<HandleMessageResult> {
     const justPersisted = await this.memory.recordUtterance(utterance);
@@ -114,7 +114,7 @@ export class JarvisCore {
   ): Promise<{ reply: string; debugError?: string }> {
     if (intent === "general") {
       const cfg = getConfig();
-      if (cfg.openaiApiKey) {
+      if (cfg.geminiApiKey) {
         try {
           const history: ChatTurn[] = this.memory.session
             .getRecent(6)

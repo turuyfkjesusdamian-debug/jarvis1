@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { getConfig, resetConfigForTests, requireOpenAiKey } from "../../src/config/index.js";
+import { getConfig, resetConfigForTests, requireGeminiConfig, requireElevenLabsConfig } from "../../src/config/index.js";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -18,15 +18,15 @@ describe("config", () => {
     delete process.env.JARVIS_PORT;
     delete process.env.PORT;
     delete process.env.JARVIS_ENV;
-    delete process.env.JARVIS_REALTIME_MODEL;
-    delete process.env.OPENAI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_MODEL;
 
     const cfg = getConfig();
     expect(cfg.logLevel).toBe("info");
     expect(cfg.env).toBe("development");
     expect(cfg.port).toBe(3939);
-    expect(cfg.realtimeModel).toBe("gpt-realtime");
-    expect(cfg.openaiApiKey).toBeUndefined();
+    expect(cfg.geminiModel).toBe("gemini-3.5-flash");
+    expect(cfg.geminiApiKey).toBeUndefined();
   });
 
   it("uses JARVIS_PORT when PORT is not set", () => {
@@ -41,8 +41,8 @@ describe("config", () => {
     expect(getConfig().port).toBe(10000);
   });
 
-  it("never requires OPENAI_API_KEY to load", () => {
-    delete process.env.OPENAI_API_KEY;
+  it("never requires GEMINI_API_KEY to load", () => {
+    delete process.env.GEMINI_API_KEY;
     expect(() => getConfig()).not.toThrow();
   });
 
@@ -51,16 +51,17 @@ describe("config", () => {
     expect(() => getConfig()).toThrow(/Invalid configuration/);
   });
 
-  it("requireOpenAiKey throws when the key is missing", () => {
-    delete process.env.OPENAI_API_KEY;
+  it("requireGeminiConfig throws when the key is missing", () => {
+    delete process.env.GEMINI_API_KEY;
     const cfg = getConfig();
-    expect(() => requireOpenAiKey(cfg)).toThrow(/OPENAI_API_KEY/);
+    expect(() => requireGeminiConfig(cfg)).toThrow(/GEMINI_API_KEY/);
   });
 
-  it("requireOpenAiKey returns the key when present", () => {
-    process.env.OPENAI_API_KEY = "sk-test-123";
+  it("requireGeminiConfig returns the key and model when present", () => {
+    process.env.GEMINI_API_KEY = "test-key-123";
+    process.env.GEMINI_MODEL = "gemini-test";
     const cfg = getConfig();
-    expect(requireOpenAiKey(cfg)).toBe("sk-test-123");
+    expect(requireGeminiConfig(cfg)).toEqual({ apiKey: "test-key-123", model: "gemini-test" });
   });
 
   it("resolves JARVIS_VAULT_PATH relative to the app directory", () => {
@@ -68,5 +69,23 @@ describe("config", () => {
     const cfg = getConfig();
     expect(cfg.vaultPath.endsWith("some-vault")).toBe(true);
     expect(cfg.vaultPath).not.toContain("..");
+  });
+
+  it("requireElevenLabsConfig throws when either the key or voice id is missing", () => {
+    delete process.env.ELEVENLABS_API_KEY;
+    delete process.env.ELEVENLABS_VOICE_ID;
+    expect(() => requireElevenLabsConfig(getConfig())).toThrow(/ELEVENLABS_API_KEY/);
+
+    resetConfigForTests();
+    process.env.ELEVENLABS_API_KEY = "sk_test";
+    delete process.env.ELEVENLABS_VOICE_ID;
+    expect(() => requireElevenLabsConfig(getConfig())).toThrow(/ELEVENLABS_VOICE_ID/);
+  });
+
+  it("requireElevenLabsConfig returns both values when present", () => {
+    process.env.ELEVENLABS_API_KEY = "sk_test";
+    process.env.ELEVENLABS_VOICE_ID = "voice-1";
+    const cfg = getConfig();
+    expect(requireElevenLabsConfig(cfg)).toEqual({ apiKey: "sk_test", voiceId: "voice-1" });
   });
 });

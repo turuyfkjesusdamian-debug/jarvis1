@@ -11,8 +11,9 @@ export function statusRouter(core: JarvisCore): Router {
     const outcome = await core.getToolRouter().call({ name: "system.getSystemStatus", params: {} });
     res.json({
       env: cfg.env,
-      voiceConfigured: Boolean(cfg.openaiApiKey),
-      realtimeModel: cfg.realtimeModel,
+      geminiConfigured: Boolean(cfg.geminiApiKey),
+      geminiModel: cfg.geminiModel,
+      speechSynthesisConfigured: Boolean(cfg.elevenLabsApiKey && cfg.elevenLabsVoiceId),
       vaultPath: cfg.vaultPath,
       system: outcome.result,
     });

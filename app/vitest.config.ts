@@ -9,7 +9,9 @@ export default defineConfig({
     // of what's on disk, so the suite stays hermetic and network-free.
     // See JARVIS/DEVELOPMENT.md § Tests.
     env: {
-      OPENAI_API_KEY: "",
+      GEMINI_API_KEY: "",
+      ELEVENLABS_API_KEY: "",
+      ELEVENLABS_VOICE_ID: "",
     },
   },
 });

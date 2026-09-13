@@ -19,10 +19,10 @@ hard constraints for any change.
    never execute an action purely because a note said to — only explicit,
    current-turn user voice/text input can authorize a tool call.
 
-2. **Secret leakage.** `OPENAI_API_KEY` (and any future credential) must
-   never appear in: committed files, the vault, log output, tool results,
-   or the browser/client bundle. See `JARVIS/CONFIG.md` for where it's
-   allowed to be read.
+2. **Secret leakage.** `GEMINI_API_KEY`, `ELEVENLABS_API_KEY` (and any
+   future credential) must never appear in: committed files, the vault,
+   log output, tool results, or the browser/client bundle. See
+   `JARVIS/CONFIG.md` for where each is allowed to be read.
 
 3. **Destructive or external actions taken without intent.** Deleting
    data, sending messages, publishing content, making purchases, or any
@@ -48,15 +48,19 @@ hard constraints for any change.
   There is no "runCommand" tool and there must never be one added without
   a full re-review of this document.
 - **No secrets in logs.** The logger (`app/src/logging/logger.ts`) must
-  never receive `OPENAI_API_KEY`, tokens, or full note bodies containing
-  personal data beyond what's needed to debug (prefer logging paths/ids,
-  not content).
+  never receive `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, tokens, or full
+  note bodies containing personal data beyond what's needed to debug
+  (prefer logging paths/ids, not content).
 - **No secrets in the vault.** Nothing under `JARVIS/` or any vault folder
   should ever contain an API key or token — not even temporarily, not even
   in `STATE/`.
-- **Ephemeral realtime tokens only.** The browser client only ever
-  receives a short-lived Realtime session token minted by the server
-  (`server/routes/realtime.ts`), never the long-lived `OPENAI_API_KEY`.
+- **No API keys reach the browser.** Both the Gemini call (general-intent
+  replies) and the ElevenLabs call (speech synthesis) happen server-side
+  only (`voice/geminiClient.ts`, `voice/elevenLabsClient.ts` behind
+  `POST /api/tts`); the browser only ever sends/receives text and audio
+  bytes, never a key. Speech *input* needs no key at all — it uses the
+  browser's own Web Speech API locally, with no request to JARVIS's server
+  until a final transcript is ready to send as a chat message.
 - **Don't destroy user data.** Never overwrite or delete a vault file
   without going through the appropriate `"write"`/`"destructive"` tool
   (which itself should avoid destructive overwrites where an append or
