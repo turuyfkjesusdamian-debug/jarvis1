@@ -4,6 +4,7 @@
      the Android app looks like the web one — see JARVIS/ARCHITECTURE.md §
      Decisions. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_gradient"
@@ -65,20 +66,33 @@
         android:layout_weight="1"
         android:orientation="vertical"
         android:gravity="center_horizontal"
-        android:paddingHorizontal="16dp"
         android:paddingTop="8dp">
 
-        <com.jarvis.app.OrbView
-            android:id="@+id/orb_view"
-            android:layout_width="260dp"
-            android:layout_height="260dp"
-            android:layout_marginBottom="12dp" />
+        <!-- Full screen width, not a smaller centered box — the orb itself
+             (see OrbView's baseRadius) is sized to fill most of this square,
+             leaving only the corners visible as background (a round sphere
+             inscribed in a square frame, same as the web version). -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp">
+
+            <com.jarvis.app.OrbView
+                android:id="@+id/orb_view"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                app:layout_constraintDimensionRatio="1:1"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
         <ScrollView
             android:id="@+id/conversation_scroll"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
+            android:layout_marginHorizontal="16dp"
             android:background="#8C12092A"
             android:padding="10dp"
             android:scrollbars="none">
@@ -242,6 +256,23 @@
                     android:thumbTint="#EDE9FE"
                     android:trackTint="#A855F7" />
             </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Volumen de la voz de JARVIS"
+                android:textColor="#EDE9FE"
+                android:textSize="13sp" />
+
+            <SeekBar
+                android:id="@+id/volume_seek_bar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:layout_marginBottom="16dp"
+                android:max="100"
+                android:progressTint="#A855F7"
+                android:thumbTint="#D8B4FE" />
 
             <View
                 android:layout_width="match_parent"

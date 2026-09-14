@@ -795,6 +795,9 @@ class JarvisListenerService : Service(), RecognitionListener {
         }.start()
     }
 
+    /** Shared with MainActivity's own default for the same "jarvis_volume" pref key (0..100, set from "Detalles"). */
+    private fun voiceVolume(): Float = getSharedPreferences("jarvis", MODE_PRIVATE).getInt("jarvis_volume", 80) / 100f
+
     private fun playAudio(bytes: ByteArray) {
         // Same self-hearing problem as local TTS (see isSpeaking) — the mic
         // must stay off while JARVIS's own reply plays through the speaker.
@@ -805,7 +808,11 @@ class JarvisListenerService : Service(), RecognitionListener {
             mediaPlayer?.release()
             mediaPlayer = android.media.MediaPlayer().apply {
                 setDataSource(file.absolutePath)
-                setOnPreparedListener { start() }
+                setOnPreparedListener {
+                    val vol = voiceVolume()
+                    it.setVolume(vol, vol)
+                    it.start()
+                }
                 setOnCompletionListener {
                     it.release()
                     isSpeaking = false
@@ -831,7 +838,8 @@ class JarvisListenerService : Service(), RecognitionListener {
     private fun speakLocally(text: String, then: (() -> Unit)? = null) {
         isSpeaking = true
         onSpeechDone = then
-        localTts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-local")
+        val params = android.os.Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, voiceVolume()) }
+        localTts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "jarvis-local")
     }
 
     private fun stripAccents(text: String): String {

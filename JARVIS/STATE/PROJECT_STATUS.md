@@ -189,24 +189,36 @@ see "What's missing" below.
   notification if that permission was never granted. JARVIS never draws
   anything visible with this permission. See `JARVIS/SECURITY.md` §
   Android app actions and `JARVIS/ARCHITECTURE.md` § Decisions.
-- **Orb tuned bigger/denser, plus two small UI additions** — the orb
-  container grew to 260dp with ~1.5x more particles and roughly doubled
-  particle size, after the user reported it looked sparse/dim on a real
-  phone (no device profiling behind the new numbers — first thing to
-  dial back if a real phone drops frames). `MainActivity` also gained a
+- **Orb tuned bigger/denser, plus three small UI additions** — the orb
+  container is now a full-width square (edge to edge, via a
+  `ConstraintLayout` 1:1-ratio wrapper) instead of a smaller centered
+  260dp box, with ~1.5x more particles, roughly doubled particle size,
+  and `baseRadius` bumped (0.34→0.38) so the sphere itself fills more of
+  that square — after two rounds of the user pointing out it looked
+  sparse/dim and didn't use the available space on a real phone (no
+  device profiling behind any of these numbers — first thing to dial
+  back if a real phone drops frames). `MainActivity` also gained: a
   "Comandos" button (a plain `AlertDialog` listing every voice command,
-  deliberately separate from "Detalles") and a "Leer las respuestas de
+  deliberately separate from "Detalles"); a "Leer las respuestas de
   JARVIS en voz alta" switch inside "Detalles" that mutes automatic TTS
   playback for typed chat replies only (the background listener always
-  speaks). See `JARVIS/ARCHITECTURE.md` § Decisions.
+  speaks); and a "Volumen de la voz de JARVIS" slider, also in
+  "Detalles", backed by one `"jarvis_volume"` preference that both
+  `MainActivity` and `JarvisListenerService` read — one control for
+  JARVIS's voice volume everywhere, not just the chat screen. See
+  `JARVIS/ARCHITECTURE.md` § Decisions.
 
 ## What's missing / next steps
 
-- **The bigger/denser orb needs a real-device look** — same untested-
-  outside-this-sandbox caveat as every other Android UI change. Worth
-  confirming specifically: ~540 particles/frame doesn't drop frames on
-  the software-rendered buffer canvas, and the brighter/slower-fading
-  glow doesn't look muddy or oversaturated in practice.
+- **The bigger/denser, now edge-to-edge orb needs a real-device look** —
+  same untested-outside-this-sandbox caveat as every other Android UI
+  change, now on its second tuning pass from live user feedback. Worth
+  confirming specifically: the corners of the square still show
+  background (expected — a round sphere can't reach a square's corners,
+  this isn't a bug), ~540 particles/frame doesn't drop frames on the
+  software-rendered buffer canvas, the brighter/slower-fading glow
+  doesn't look muddy or oversaturated, and the volume slider actually
+  changes both the chat screen's and the background listener's voice.
 
 - **The direct-launch overlay permission needs a real-device test** — the
   documented Android exemption (`SYSTEM_ALERT_WINDOW` + an active

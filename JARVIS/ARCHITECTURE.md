@@ -161,6 +161,31 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Two follow-ups after the user saw the previous orb
+  resize on a real phone and pointed out its corners weren't filled:
+  (1) `activity_main.xml`'s orb container is now a full-width square (an
+  `androidx.constraintlayout.widget.ConstraintLayout` wrapper with
+  `layout_constraintDimensionRatio="1:1"` pinned to both screen edges),
+  not a smaller 260dp box with background visible on either side — the
+  `constraintlayout` dependency was already present, just unused before
+  this. (2) `OrbView`'s `baseRadius` factor went from 0.34 to 0.38 so the
+  particle sphere itself fills noticeably more of that square at rest;
+  the documented trade-off is that the outermost ring can very briefly
+  extend a few percent past the view's edge at maximum energy (Canvas
+  just clips it silently, no error). The square's corners will always
+  show background regardless of either change — a round sphere inscribed
+  in a square frame geometrically cannot reach its corners, same as the
+  web version; that part isn't a bug to fix, just how the shape works.
+  Also added, requested in the same message: a "Comandos" button
+  (separate from "Detalles", see the entry below) and, per a follow-up
+  asking for volume control specifically, a "Volumen de la voz de
+  JARVIS" `SeekBar` inside "Detalles" — a single `"jarvis_volume"`
+  SharedPreferences key (0–100, default 80) read by both `MainActivity`
+  (applied via `MediaPlayer.setVolume`) and `JarvisListenerService`
+  (applied to its own `MediaPlayer` the same way, and to the on-device
+  `TextToSpeech` filler phrases via a `Bundle` with
+  `TextToSpeech.Engine.KEY_PARAM_VOLUME`) — one slider controls JARVIS's
+  voice everywhere, not just the chat screen.
 - **2026-09-14** — Made the Android orb (`OrbView.kt`) bigger and denser
   after the user reported it looked sparse/dim on a real phone: the
   container grew from 200dp to 260dp, each ring's particle count went up

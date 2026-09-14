@@ -106,7 +106,16 @@ class OrbView @JvmOverloads constructor(
         h = newH.toFloat()
         cx = w / 2f
         cy = h / 2f
-        baseRadius = min(w, h) * 0.34f
+        // Bigger than the web original's 0.34 — the particle sphere read as
+        // noticeably smaller than its square frame at rest. The outer ring
+        // can very briefly extend a few percent past the view's edge at
+        // maximum energy (ring radius 1.0 x jitter 1.08 x scale 1.3 x 0.38 ≈
+        // 0.53 of the full width from center) — an acceptable trade for a
+        // fuller-looking sphere most of the time, since Canvas just clips
+        // it silently rather than erroring. The square's corners still show
+        // background either way: a round sphere inscribed in a square frame
+        // always leaves its corners visible, same as the web version.
+        baseRadius = min(w, h) * 0.38f
         buffer = Bitmap.createBitmap(max(1, newW), max(1, newH), Bitmap.Config.ARGB_8888)
         bufferCanvas = Canvas(buffer!!)
     }

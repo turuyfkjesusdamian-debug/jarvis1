@@ -18,6 +18,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,6 +28,9 @@ import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.sqrt
+
+/** Shared with JarvisListenerService's own default for the same "jarvis_volume" pref key. */
+private const val DEFAULT_VOLUME_PERCENT = 80
 
 /**
  * Milestone 1 (login + chat) plus milestone 2 (toggling the "oye jarvis"
@@ -135,6 +139,7 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
         detailsPanel = findViewById(R.id.details_panel)
         val commandsToggle = findViewById<TextView>(R.id.commands_toggle)
         val speakRepliesSwitch = findViewById<Switch>(R.id.speak_replies_switch)
+        val volumeSeekBar = findViewById<SeekBar>(R.id.volume_seek_bar)
         val serverUrlInput = findViewById<EditText>(R.id.server_url_input)
         val passwordInput = findViewById<EditText>(R.id.password_input)
         val loginButton = findViewById<Button>(R.id.login_button)
@@ -172,6 +177,18 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
         speakRepliesSwitch.setOnCheckedChangeListener { _, checked ->
             prefs.edit().putBoolean("speak_replies_enabled", checked).apply()
         }
+
+        // Shared with JarvisListenerService (same "jarvis" SharedPreferences
+        // file, same "jarvis_volume" key) so the background listener's voice
+        // matches whatever the user sets here.
+        volumeSeekBar.progress = prefs.getInt("jarvis_volume", DEFAULT_VOLUME_PERCENT)
+        volumeSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser) prefs.edit().putInt("jarvis_volume", progress).apply()
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
 
         loginButton.setOnClickListener {
             val url = serverUrlInput.text.toString().trim().trimEnd('/')
@@ -378,6 +395,8 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
                 setDataSource(file.absolutePath)
                 setOnPreparedListener {
                     audioStatus.text = "Reproduciendo…"
+                    val vol = prefs.getInt("jarvis_volume", DEFAULT_VOLUME_PERCENT) / 100f
+                    it.setVolume(vol, vol)
                     attachVisualizer(it.audioSessionId)
                     it.start()
                 }
