@@ -161,6 +161,22 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Fixed WhatsApp/calling silently doing nothing after a
+  confirmed "sí" — JARVIS spoke "Listo, señor" but WhatsApp/the dialer
+  never actually appeared, with no error surfaced. Root cause: Android
+  (API 29+) silently blocks a background `Service` from calling
+  `startActivity()` to launch another app — no exception is thrown, the
+  launch is just dropped, so the code had no way to know it failed.
+  Fixed by launching both via a tap-to-open notification instead
+  (`launchViaNotification`, posted on a dedicated high-importance
+  channel) — a notification tap always counts as a direct user action and
+  is exempt from this restriction. Trade-off: confirming now requires one
+  extra tap (on the notification) rather than the app opening
+  automatically — an acceptable cost for it actually working, and
+  consistent with WhatsApp itself already requiring a manual tap to send.
+  Also switched `URLEncoder`'s `+`-for-space encoding to `%20` in the
+  `wa.me` link (`+` is valid but some WhatsApp versions handle it
+  inconsistently in query strings).
 - **2026-09-14** — Fixed the WhatsApp/call confirmation always resolving
   to "no" regardless of what the user actually said, and added a "jarvis
   apágate" shutdown command. Root cause: `SpeechRecognizer` restarted

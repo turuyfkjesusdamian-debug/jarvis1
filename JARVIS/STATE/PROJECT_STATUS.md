@@ -130,27 +130,19 @@ see "What's missing" below.
   `/api/chat` + `/api/tts` pipeline — toggled from a button in
   `MainActivity`, which also prompts for the battery-optimization
   exemption and restarts itself after a reboot (`BootReceiver`) if it was
-  on. **Two on-device actions added on top, both requiring an explicit
-  spoken "sí" first** (untested on a real device as of this writing): "
-  envíale un mensaje a X que diga Y" (opens WhatsApp with the message
-  pre-filled — WhatsApp doesn't allow third-party apps to send directly)
-  and "llama a X" (places a real call). Both resolve the contact and
-  process the command entirely on-device — see `JARVIS/SECURITY.md` §
-  Android app actions and `JARVIS/ARCHITECTURE.md` § Decisions.
+  on. **Two on-device actions confirmed working live, both requiring an
+  explicit spoken "sí" first**: "envíale un mensaje a X que diga Y" (opens
+  WhatsApp with the message pre-filled — WhatsApp doesn't allow
+  third-party apps to send directly) and "llama a X" (places a real
+  call). Both resolve the contact and process the command entirely
+  on-device — see `JARVIS/SECURITY.md` § Android app actions and
+  `JARVIS/ARCHITECTURE.md` § Decisions. A bug where every confirmation
+  resolved to "Cancelado" regardless of what the user said (the mic was
+  hearing JARVIS's own spoken prompt as the answer) was found and fixed
+  the same day; also added "jarvis apágate" to stop the listener and
+  fully close the app, no confirmation needed.
 
 ## What's missing / next steps
-
-- **WhatsApp messaging and phone calling need a real-device test** —
-  untested outside this environment, same constraint as every Android
-  feature so far. Needs: confirming the contact-lookup regex actually
-  parses natural phrasing correctly, that the confirmation readback and
-  yes/no handling feel right, that WhatsApp opens with the correct chat
-  and pre-filled text, and that the call actually places. Also needs
-  `READ_CONTACTS`/`CALL_PHONE` granted — these are only requested when the
-  listener is (re)activated via the button, so if it was already running
-  before this update, the user needs to stop and start it again after
-  installing to get prompted for the two new permissions (or grant them
-  manually from the app's system settings page).
 - **An external uptime pinger needs to be pointed at `GET /healthz`** to
   stop Render's free tier from spinning the service down after 15 minutes
   idle — this is what caused the "sometimes instant, sometimes 30+

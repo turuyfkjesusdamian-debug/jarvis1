@@ -34,14 +34,19 @@ import java.util.Locale
  * web UI and MainActivity's test button use — see
  * JARVIS/ARCHITECTURE.md § Decisions ("milestone 2"). Two commands are
  * special-cased and handled entirely on-device instead, never touching
- * the server: "envíale un mensaje a X que diga Y" (opens WhatsApp with
+ * the server: "envíale un mensaje a X que diga Y" (prepares WhatsApp with
  * the message pre-filled — WhatsApp itself doesn't allow a third-party
- * app to send it, only prepare it) and "llama a X" (places a real phone
- * call directly). Both require the user to say an explicit "sí" to a
- * spoken readback before anything happens — see JARVIS/SECURITY.md §
- * Actions requiring confirmation. A third phrase, "jarvis apágate", stops
- * the listener and kills the app's own process outright — no confirmation
- * needed, since it only affects the person saying it.
+ * app to send it) and "llama a X" (a real phone call). Both require the
+ * user to say an explicit "sí" to a spoken readback before anything
+ * happens — see JARVIS/SECURITY.md § Actions requiring confirmation. On
+ * confirmation, both are launched via a tap-to-open notification
+ * ([launchViaNotification]) rather than directly — Android silently
+ * blocks a background Service from opening another app itself (API 29+),
+ * with no exception to catch, so a direct `startActivity()` here looked
+ * like it worked (spoke "Listo, señor") but WhatsApp/the dialer never
+ * actually appeared. A third phrase, "jarvis apágate", stops the listener
+ * and kills the app's own process outright — no confirmation needed,
+ * since it only affects the person saying it.
  *
  * Runs independently of MainActivity's lifecycle: it reads the server
  * URL/session straight from SharedPreferences rather than holding a
@@ -58,7 +63,9 @@ class JarvisListenerService : Service(), RecognitionListener {
     companion object {
         const val ACTION_STOP = "com.jarvis.app.action.STOP"
         const val CHANNEL_ID = "jarvis_listening"
+        const val ACTION_CHANNEL_ID = "jarvis_actions"
         const val NOTIFICATION_ID = 1
+        const val ACTION_NOTIFICATION_ID = 2
         private const val WAKE_WORD = "oye jarvis"
         private const val FOLLOW_UP_WINDOW_MS = 8_000L
         private const val CONFIRMATION_WINDOW_MS = 10_000L
@@ -437,21 +444,23 @@ class JarvisListenerService : Service(), RecognitionListener {
 
     private fun openWhatsApp(pending: PendingConfirmation.WhatsAppMessage) {
         try {
-            val encodedMessage = URLEncoder.encode(pending.message, "UTF-8")
+            val encodedMessage = URLEncoder.encode(pending.message, "UTF-8").replace("+", "%20")
             val uri = Uri.parse("https://wa.me/${pending.phone}?text=$encodedMessage")
-            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            speakLocally("Listo, señor. Abrí WhatsApp con el mensaje para ${pending.contactName}. Solo falta que usted lo envíe.")
+            val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            launchViaNotification(intent, "Toque para abrir WhatsApp con el mensaje para ${pending.contactName}")
+            speakLocally("Listo, señor. Toque la notificación para abrir WhatsApp con el mensaje para ${pending.contactName}.")
         } catch (e: Exception) {
             Log.e(TAG, "openWhatsApp failed", e)
-            speakLocally("No pude abrir WhatsApp, señor.")
+            speakLocally("No pude preparar WhatsApp, señor.")
         }
     }
 
     private fun placeCall(pending: PendingConfirmation.PhoneCall) {
         try {
             val uri = Uri.parse("tel:${pending.phone}")
-            startActivity(Intent(Intent.ACTION_CALL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            speakLocally("Llamando a ${pending.contactName}, señor.")
+            val intent = Intent(Intent.ACTION_CALL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            launchViaNotification(intent, "Toque para llamar a ${pending.contactName}")
+            speakLocally("Listo, señor. Toque la notificación para llamar a ${pending.contactName}.")
         } catch (e: Exception) {
             Log.e(TAG, "placeCall failed", e)
             speakLocally("No pude realizar la llamada, señor.")
@@ -537,9 +546,39 @@ class JarvisListenerService : Service(), RecognitionListener {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "JARVIS escuchando", NotificationManager.IMPORTANCE_LOW)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "JARVIS escuchando", NotificationManager.IMPORTANCE_LOW)
+            )
+            // High importance so it actually pops up — Android won't let a
+            // background Service open WhatsApp or the dialer directly
+            // (silently blocked, no exception, since API 29), but tapping a
+            // notification always counts as a direct user action and is
+            // exempt from that restriction. See JARVIS/ARCHITECTURE.md § Decisions.
+            nm.createNotificationChannel(
+                NotificationChannel(ACTION_CHANNEL_ID, "JARVIS: acción requerida", NotificationManager.IMPORTANCE_HIGH)
+            )
         }
+    }
+
+    /** Posts a tap-to-launch notification for [intent] — the only reliable way to
+     * open another app (WhatsApp, the dialer) from a background Service; a direct
+     * startActivity() call here is silently dropped by Android's background
+     * activity-launch restrictions (API 29+), with no exception to catch. */
+    private fun launchViaNotification(intent: Intent, tapText: String) {
+        val pendingIntent = PendingIntent.getActivity(
+            this, System.currentTimeMillis().toInt(), intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(this, ACTION_CHANNEL_ID)
+            .setContentTitle("JARVIS")
+            .setContentText(tapText)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(ACTION_NOTIFICATION_ID, notification)
     }
 
     private fun buildNotification(text: String): Notification {
