@@ -121,18 +121,26 @@ see "What's missing" below.
   as a sideloadable APK, signed with a committed keystore
   (`android/jarvis-release.keystore`) so updates install over the old
   version. Login, chat, and speech playback all verified live by the user
-  — text and audio both work correctly from the native app. Not yet the
-  actual voice-command feature — that's milestone 2 (a foreground service
-  doing continuous speech recognition for a wake word).
+  — text and audio both work correctly from the native app. **Milestone 2
+  implemented** (not yet device-tested): `JarvisListenerService`, a
+  foreground service that listens continuously via Android's
+  `SpeechRecognizer` for "oye jarvis", extracts whatever follows as the
+  command (or, said alone, acknowledges locally via on-device
+  `TextToSpeech` and treats the next utterance as the command), and
+  round-trips it through the same `/api/chat` + `/api/tts` pipeline —
+  toggled from a new button in `MainActivity`, which also prompts for the
+  battery-optimization exemption before starting it.
 
 ## What's missing / next steps
 
-- **Android app milestone 2 (background wake-word listener) not started
-  yet.** Milestone 1 is fully confirmed working (login, chat, and speech
-  playback all verified live on the user's phone) — next is a foreground
-  service doing continuous speech recognition for a wake word, plus
-  walking the user through the Xiaomi/MIUI battery-optimization /
-  autostart settings that background services need to survive there.
+- **Android app milestone 2 needs a real-device test** — untested outside
+  this environment (no device/emulator available to Claude, same
+  constraint as milestone 1). Needs: confirming the wake word is
+  recognized reliably, that replies are both heard and sensible, and then
+  walking the user through Xiaomi/MIUI's separate "autostart" toggle
+  (no public API to request it, must be granted manually in MIUI's
+  Security app) since the battery-optimization exemption alone is
+  unlikely to be enough to keep a background listener alive there.
 - **Render's environment variables need `JARVIS_APP_PASSWORD` added** for
   the new password gate to actually activate (`jarvis-12lx.onrender.com`
   currently has none set, so the app is still open to anyone with the

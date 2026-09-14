@@ -128,5 +128,45 @@
             android:textColor="#9A8BC4"
             android:textSize="13sp" />
 
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="24dp"
+            android:background="#2c1a54" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Escucha en segundo plano"
+            android:textColor="#9A8BC4"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="12dp"
+            android:text="Di &#8220;oye jarvis&#8221; seguido de tu pregunta, con el celular desbloqueado."
+            android:textColor="#5a4d80"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/toggle_listener_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:backgroundTint="#A855F7"
+            android:text="Activar escucha en segundo plano"
+            android:textColor="#0B0517" />
+
+        <TextView
+            android:id="@+id/listener_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Detenida."
+            android:textColor="#9A8BC4"
+            android:textSize="13sp" />
+
     </LinearLayout>
 </ScrollView>

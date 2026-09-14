@@ -161,6 +161,48 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Implemented milestone 2 of the Android companion app:
+  the actual "oye jarvis" background wake-word listener
+  (`android/app/src/main/java/com/jarvis/app/JarvisListenerService.kt`),
+  a foreground service with `foregroundServiceType="microphone"`. Key
+  choices:
+  - **Continuous listening without a dedicated wake-word engine**: no
+    Picovoice/Snowboy-style keyword spotter — just Android's built-in
+    `SpeechRecognizer` in a restart-after-every-result loop (same pattern
+    as the web UI's `SpeechRecognition` auto-restart), checking every
+    transcript for "oye jarvis" (accent/case-insensitive via
+    `java.text.Normalizer`) before sending anything to the server.
+    Utterances without the wake word are discarded locally, never sent
+    over the network — this matters both for privacy and so idle
+    background chatter doesn't rack up Gemini/ElevenLabs usage.
+    Simplicity over efficiency deliberately: a real keyword-spotter model
+    would use less battery, but adds a new dependency/SDK account and
+    much more that could go wrong on a build Claude can't test directly
+    (see the milestone-1 entry below on why that risk is being minimized
+    everywhere possible in this sub-project).
+  - **Wake word alone vs. wake word + command in one breath**: saying
+    just "oye jarvis" gets a local, offline acknowledgment ("Sí, señor,
+    dígame.", via Android's built-in `TextToSpeech`, no network call) and
+    opens an 8-second window where the next utterance — with or without
+    repeating the wake word — is treated as the command. Saying the whole
+    thing at once ("oye jarvis qué tengo hoy") also works, extracting
+    whatever follows the wake word directly. Real replies always use
+    ElevenLabs (matching the web UI and MainActivity's voice), falling
+    back to the local TTS only if the network call fails, so the user at
+    least hears something went wrong instead of silence.
+  - **Reads its own session from SharedPreferences** rather than holding
+    a reference to `MainActivity` — the service must keep running after
+    the activity is destroyed, so it can't depend on activity state.
+  - **Battery optimization exemption requested up front**: tapping
+    "Activar escucha en segundo plano" first asks the user to exempt the
+    app from battery optimization
+    (`Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) before
+    starting the service — necessary but likely not sufficient on MIUI,
+    which has its own separate "autostart" toggle with no public API to
+    request it; that has to be walked through manually with the user once
+    this is confirmed working with the screen unlocked (their stated
+    requirement), and is the most likely explanation if the listener
+    "just stops" after a while with no error.
 - **2026-09-13** — Started a native Android companion app (`android/`), at
   the user's request, for a voice command that works without manually
   opening the web app first. A PWA cannot listen in the background once

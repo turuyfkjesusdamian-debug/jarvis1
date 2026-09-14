@@ -1,22 +1,28 @@
 package com.jarvis.app
 
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.MediaPlayer
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.FileOutputStream
 
 /**
- * Milestone 1: just enough to prove the whole pipeline works end to end —
- * log in against the existing JARVIS server, send a text message through
- * the same /api/chat path the web UI uses, and play back the spoken reply.
- * No background listening yet (see JARVIS/ARCHITECTURE.md § Decisions) —
- * that's milestone 2, once this is confirmed working on a real phone.
+ * Milestone 1 (login + a manual test message) plus milestone 2 (toggling
+ * the "oye jarvis" background listener, JarvisListenerService) — see
+ * JARVIS/ARCHITECTURE.md § Decisions.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -24,6 +30,18 @@ class MainActivity : AppCompatActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var api: JarvisApiClient
     private var mediaPlayer: MediaPlayer? = null
+    private lateinit var listenerStatus: TextView
+    private lateinit var toggleListenerButton: Button
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { granted ->
+        if (granted.values.all { it }) {
+            startListenerService()
+        } else {
+            listenerStatus.text = "Se necesita permiso de micrófono (y notificaciones) para escuchar."
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,6 +55,8 @@ class MainActivity : AppCompatActivity() {
         val sendTestButton = findViewById<Button>(R.id.send_test_button)
         val replyText = findViewById<TextView>(R.id.reply_text)
         val audioStatus = findViewById<TextView>(R.id.audio_status)
+        toggleListenerButton = findViewById(R.id.toggle_listener_button)
+        listenerStatus = findViewById(R.id.listener_status)
 
         val savedUrl = prefs.getString("server_url", "")
         serverUrlInput.setText(savedUrl)
@@ -86,6 +106,70 @@ class MainActivity : AppCompatActivity() {
                 onError = { err -> replyText.text = "Error: ${err.message}" },
             )
         }
+
+        updateListenerButtonUi()
+        toggleListenerButton.setOnClickListener {
+            if (JarvisListenerService.isRunning) {
+                stopListenerService()
+            } else {
+                if (!api.hasSession()) {
+                    listenerStatus.text = "Primero inicia sesión arriba."
+                    return@setOnClickListener
+                }
+                requestBatteryOptimizationExemption()
+                ensurePermissionsThenStart()
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::toggleListenerButton.isInitialized) updateListenerButtonUi()
+    }
+
+    private fun ensurePermissionsThenStart() {
+        val needed = mutableListOf(android.Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            needed.add(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val missing = needed.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            startListenerService()
+        } else {
+            permissionLauncher.launch(missing.toTypedArray())
+        }
+    }
+
+    /** Without this, MIUI (and stock Android's Doze mode) will kill the listener within minutes. */
+    private fun requestBatteryOptimizationExemption() {
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+            try {
+                startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+            } catch (_: Exception) {
+                // Some ROMs (MIUI included) don't support this intent directly —
+                // the user then needs to grant it manually from Settings.
+            }
+        }
+    }
+
+    private fun startListenerService() {
+        val intent = Intent(this, JarvisListenerService::class.java)
+        ContextCompat.startForegroundService(this, intent)
+        updateListenerButtonUi(startingNow = true)
+    }
+
+    private fun stopListenerService() {
+        startService(Intent(this, JarvisListenerService::class.java).setAction(JarvisListenerService.ACTION_STOP))
+        updateListenerButtonUi()
+    }
+
+    private fun updateListenerButtonUi(startingNow: Boolean = false) {
+        val active = startingNow || JarvisListenerService.isRunning
+        toggleListenerButton.text = if (active) "Detener escucha en segundo plano" else "Activar escucha en segundo plano"
+        listenerStatus.text = if (active) "Escuchando “oye jarvis”…" else "Detenida."
     }
 
     private fun speak(text: String, audioStatus: TextView) {
