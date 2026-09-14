@@ -11,6 +11,12 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Optional: lets JarvisListenerService open apps/WhatsApp/the dialer
+         directly instead of via a tap-to-open notification (see
+         JarvisListenerService.addInvisibleOverlayIfPermitted). JARVIS never
+         draws anything visible with it — see JARVIS/SECURITY.md § Android
+         app actions. Falls back to the notification if never granted. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <!-- Android 11+ hides other installed apps by default (package
          visibility) — this is the sanctioned way to see launchable apps

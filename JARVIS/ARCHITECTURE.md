@@ -161,6 +161,42 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Added an optional way for "abre X" (and every other
+  app-launching command — WhatsApp, calls, YouTube, Maps) to open
+  directly instead of through a tap-to-open notification, per the user's
+  request ("que las apps que no necesiten de la noti se habran solas").
+  The honest answer given to the user first: this was never really about
+  *which app* — Android's background-activity-launch restriction (API
+  29+) blocks a background `Service` from calling `startActivity()`
+  regardless of the target app, which is why every one of these commands
+  needed the notification-tap workaround in the first place (a tap always
+  counts as a qualifying user action). The one documented exemption that
+  doesn't need a full-screen intent (which only auto-launches while the
+  screen is off/locked — useless here, since the whole point of this
+  listener is working with the phone already unlocked) is holding the
+  `SYSTEM_ALERT_WINDOW` ("Mostrar sobre otras apps") permission *and*
+  actively maintaining a window of type `TYPE_APPLICATION_OVERLAY` — just
+  holding the permission isn't sufficient. So `JarvisListenerService` now
+  keeps one permanently invisible 1×1 overlay window up for its whole
+  lifetime purely to satisfy that check
+  (`addInvisibleOverlayIfPermitted`/`removeInvisibleOverlay`) — it draws
+  nothing a user could ever see or interact with. `launchApp` tries
+  `startActivity()` directly whenever that overlay is up, falling back to
+  the existing `launchViaNotification` otherwise (permission never
+  granted, a ROM blocks it, or the direct call throws for any reason) —
+  every call site keeps two spoken-reply variants
+  (`CommandParseResult.LaunchNow.directSpokenText` /
+  `.notifiedSpokenText`) since what actually happened differs. The
+  permission itself is optional and requested the same way as the
+  battery-optimization exemption (`MainActivity.requestOverlayPermission`,
+  a `Settings.ACTION_MANAGE_OVERLAY_PERMISSION` intent) — declining it, or
+  a ROM not supporting the settings intent, just means every command
+  keeps using the notification exactly as before. Known rough edge: since
+  the overlay is only added in `onCreate`, granting the permission while
+  the listener is already running doesn't take effect until the user
+  stops and restarts it (a fresh `onCreate`) — flagged to the user rather
+  than solved with more code, since it's a one-time setup step, not a
+  recurring annoyance.
 - **2026-09-14** — Gave the Android app the same visual design as the web
   UI: a native `OrbView.kt` custom `View` ports `app/public/orb.js`'s
   particle-sphere rendering (same ring math, rotation, drag-to-spin with

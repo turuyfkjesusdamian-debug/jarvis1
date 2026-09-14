@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.PixelFormat
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -14,12 +15,15 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.Process
 import android.provider.ContactsContract
+import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import android.view.View
+import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -51,8 +55,10 @@ import java.util.Locale
  *   opening the wrong thing). None of these need confirmation: unlike
  *   WhatsApp/calls, opening an app or a search page affects no one but
  *   the user themselves.
- * All of the above launch via a tap-to-open notification
- * ([launchViaNotification]) rather than directly — Android silently
+ * All of the above launch via [launchApp], which opens the app directly
+ * when we hold the optional SYSTEM_ALERT_WINDOW permission (see
+ * [addInvisibleOverlayIfPermitted]), or falls back to a tap-to-open
+ * notification ([launchViaNotification]) otherwise — Android silently
  * blocks a background Service from opening another app itself (API 29+),
  * with no exception to catch, so a direct `startActivity()` call here
  * looked like it worked but nothing actually appeared. One more phrase,
@@ -137,6 +143,8 @@ class JarvisListenerService : Service(), RecognitionListener {
     private var mediaPlayer: android.media.MediaPlayer? = null
     private var awaitingFollowUp = false
     private var running = false
+    /** Non-null only while an invisible overlay window is actually held — see [addInvisibleOverlayIfPermitted]. */
+    private var overlayView: View? = null
     private var pendingConfirmation: PendingConfirmation? = null
     // While true, the recognizer stays off — otherwise the mic picks up
     // JARVIS's own voice through the speaker as if it were the user
@@ -168,10 +176,23 @@ class JarvisListenerService : Service(), RecognitionListener {
         data class AppNotFound(val name: String) : CommandParseResult()
         data class MultipleApps(val name: String, val count: Int) : CommandParseResult()
         data class Ready(val pending: PendingConfirmation) : CommandParseResult()
-        /** No confirmation needed — opening an app or a YouTube search has no
-         * effect on anyone but the user, unlike WhatsApp/calls. */
-        data class LaunchNow(val intent: Intent, val tapText: String, val spokenText: String) : CommandParseResult()
+        /**
+         * No confirmation needed — opening an app or a YouTube search has no
+         * effect on anyone but the user, unlike WhatsApp/calls.
+         * [notifiedSpokenText] is used when [launchApp] had to fall back to a
+         * tap-to-open notification; [directSpokenText] when it opened the app
+         * immediately (SYSTEM_ALERT_WINDOW granted).
+         */
+        data class LaunchNow(
+            val intent: Intent,
+            val tapText: String,
+            val notifiedSpokenText: String,
+            val directSpokenText: String,
+        ) : CommandParseResult()
     }
+
+    /** Result of [launchApp] — decides which spoken message fits what actually happened. */
+    private enum class LaunchOutcome { OPENED, NOTIFIED, FAILED }
 
     override fun onCreate() {
         super.onCreate()
@@ -194,6 +215,7 @@ class JarvisListenerService : Service(), RecognitionListener {
             }
         }
         createNotificationChannel()
+        addInvisibleOverlayIfPermitted()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -219,6 +241,7 @@ class JarvisListenerService : Service(), RecognitionListener {
         stopListening()
         localTts?.shutdown()
         mediaPlayer?.release()
+        removeInvisibleOverlay()
         isRunning = false
         super.onDestroy()
     }
@@ -371,8 +394,10 @@ class JarvisListenerService : Service(), RecognitionListener {
                 speakLocally(prompt)
             }
             is CommandParseResult.LaunchNow -> {
-                if (launchViaNotification(parsed.intent, parsed.tapText)) {
-                    speakLocally(parsed.spokenText)
+                when (launchApp(parsed.intent, parsed.tapText)) {
+                    LaunchOutcome.OPENED -> speakLocally(parsed.directSpokenText)
+                    LaunchOutcome.NOTIFIED -> speakLocally(parsed.notifiedSpokenText)
+                    LaunchOutcome.FAILED -> Unit // launchViaNotification already spoke the diagnostic
                 }
             }
             is CommandParseResult.ContactNotFound ->
@@ -473,7 +498,8 @@ class JarvisListenerService : Service(), RecognitionListener {
         return CommandParseResult.LaunchNow(
             intent,
             "Toque para ver \"$query\" en YouTube",
-            "Listo, señor. Toque la notificación para ver los resultados de $query en YouTube."
+            "Listo, señor. Toque la notificación para ver los resultados de $query en YouTube.",
+            "Listo, señor. Ahí tiene los resultados de $query en YouTube.",
         )
     }
 
@@ -522,7 +548,8 @@ class JarvisListenerService : Service(), RecognitionListener {
                     return CommandParseResult.LaunchNow(
                         intent,
                         "Toque para ver \"$query\" cerca de usted",
-                        "Listo, señor. Toque la notificación para ver $query cerca de usted en Maps."
+                        "Listo, señor. Toque la notificación para ver $query cerca de usted en Maps.",
+                        "Listo, señor. Ahí tiene $query cerca de usted en Maps.",
                     )
                 }
             }
@@ -541,7 +568,8 @@ class JarvisListenerService : Service(), RecognitionListener {
         return CommandParseResult.LaunchNow(
             intent,
             "Toque para ver la ruta $spokenRoute",
-            "Listo, señor. Toque la notificación para ver la ruta $spokenRoute."
+            "Listo, señor. Toque la notificación para ver la ruta $spokenRoute.",
+            "Listo, señor. Ahí tiene la ruta $spokenRoute.",
         )
     }
 
@@ -568,7 +596,8 @@ class JarvisListenerService : Service(), RecognitionListener {
             return CommandParseResult.LaunchNow(
                 intent,
                 "Toque para buscar \"$query\" en $appName",
-                "Listo, señor. Toque la notificación para buscar $query en $appName."
+                "Listo, señor. Toque la notificación para buscar $query en $appName.",
+                "Listo, señor. Ahí tiene la búsqueda de $query en $appName.",
             )
         }
 
@@ -581,7 +610,8 @@ class JarvisListenerService : Service(), RecognitionListener {
                 CommandParseResult.LaunchNow(
                     intent,
                     "Toque para abrir $label",
-                    "Toque la notificación para abrir $label, señor — no puedo buscar $query ahí automáticamente, tendrá que hacerlo desde la app."
+                    "Toque la notificación para abrir $label, señor — no puedo buscar $query ahí automáticamente, tendrá que hacerlo desde la app.",
+                    "Ahí tiene $label abierto, señor — no puedo buscar $query ahí automáticamente, tendrá que hacerlo desde la app.",
                 )
             }
         }
@@ -601,7 +631,12 @@ class JarvisListenerService : Service(), RecognitionListener {
             matches.size > 1 -> CommandParseResult.MultipleApps(appName, matches.size)
             else -> {
                 val (label, intent) = matches[0]
-                CommandParseResult.LaunchNow(intent, "Toque para abrir $label", "Listo, señor. Toque la notificación para abrir $label.")
+                CommandParseResult.LaunchNow(
+                    intent,
+                    "Toque para abrir $label",
+                    "Listo, señor. Toque la notificación para abrir $label.",
+                    "Listo, señor. Ahí tiene $label abierto.",
+                )
             }
         }
     }
@@ -700,8 +735,12 @@ class JarvisListenerService : Service(), RecognitionListener {
             val encodedMessage = URLEncoder.encode(pending.message, "UTF-8").replace("+", "%20")
             val uri = Uri.parse("https://wa.me/${pending.phone}?text=$encodedMessage")
             val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (launchViaNotification(intent, "Toque para abrir WhatsApp con el mensaje para ${pending.contactName}")) {
-                speakLocally("Listo, señor. Toque la notificación para abrir WhatsApp con el mensaje para ${pending.contactName}.")
+            when (launchApp(intent, "Toque para abrir WhatsApp con el mensaje para ${pending.contactName}")) {
+                LaunchOutcome.OPENED ->
+                    speakLocally("Listo, señor. Ahí tiene WhatsApp con el mensaje para ${pending.contactName}.")
+                LaunchOutcome.NOTIFIED ->
+                    speakLocally("Listo, señor. Toque la notificación para abrir WhatsApp con el mensaje para ${pending.contactName}.")
+                LaunchOutcome.FAILED -> Unit
             }
         } catch (e: Exception) {
             Log.e(TAG, "openWhatsApp failed", e)
@@ -713,8 +752,11 @@ class JarvisListenerService : Service(), RecognitionListener {
         try {
             val uri = Uri.parse("tel:${pending.phone}")
             val intent = Intent(Intent.ACTION_CALL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (launchViaNotification(intent, "Toque para llamar a ${pending.contactName}")) {
-                speakLocally("Listo, señor. Toque la notificación para llamar a ${pending.contactName}.")
+            when (launchApp(intent, "Toque para llamar a ${pending.contactName}")) {
+                LaunchOutcome.OPENED -> speakLocally("Listo, señor, llamando a ${pending.contactName}.")
+                LaunchOutcome.NOTIFIED ->
+                    speakLocally("Listo, señor. Toque la notificación para llamar a ${pending.contactName}.")
+                LaunchOutcome.FAILED -> Unit
             }
         } catch (e: Exception) {
             Log.e(TAG, "placeCall failed", e)
@@ -816,10 +858,77 @@ class JarvisListenerService : Service(), RecognitionListener {
         }
     }
 
-    /** Posts a tap-to-launch notification for [intent] — the only reliable way to
-     * open another app (WhatsApp, the dialer) from a background Service; a direct
-     * startActivity() call here is silently dropped by Android's background
-     * activity-launch restrictions (API 29+), with no exception to catch.
+    // --- Opening apps directly, without a notification (optional) ---
+    // Android exempts a background Service from its activity-launch
+    // restriction (API 29+) if the app holds SYSTEM_ALERT_WINDOW *and* is
+    // actually maintaining a window of type TYPE_APPLICATION_OVERLAY —
+    // just holding the permission isn't enough. So this keeps one
+    // permanently-invisible 1x1 window up for the service's whole
+    // lifetime, purely to satisfy that check — JARVIS never draws
+    // anything a user could see or tap through it (see
+    // JARVIS/SECURITY.md § Android app actions). Entirely optional: if
+    // the user never grants "Mostrar sobre otras apps" (or a ROM blocks
+    // it), [addInvisibleOverlayIfPermitted] just no-ops and every launch
+    // falls back to [launchViaNotification], exactly as before.
+
+    private fun hasOverlayPermission(): Boolean = Settings.canDrawOverlays(this)
+
+    private fun addInvisibleOverlayIfPermitted() {
+        if (!hasOverlayPermission() || overlayView != null) return
+        try {
+            val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            val params = WindowManager.LayoutParams(
+                1, 1,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT,
+            )
+            val view = View(this)
+            windowManager.addView(view, params)
+            overlayView = view
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not add invisible overlay window — falling back to notifications", e)
+            overlayView = null
+        }
+    }
+
+    private fun removeInvisibleOverlay() {
+        overlayView?.let {
+            try {
+                (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(it)
+            } catch (_: Exception) {
+                // Already removed, or the window manager rejected it — nothing to clean up.
+            }
+        }
+        overlayView = null
+    }
+
+    /**
+     * Launches [intent] directly when the invisible overlay window is up
+     * (see above), or via [launchViaNotification] otherwise. Every call
+     * site already builds a real, launchable Activity intent — this just
+     * decides *how* to start it, never whether it's safe to.
+     */
+    private fun launchApp(intent: Intent, tapText: String): LaunchOutcome {
+        if (overlayView != null) {
+            try {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                return LaunchOutcome.OPENED
+            } catch (e: Exception) {
+                Log.w(TAG, "Direct startActivity failed despite the overlay window, falling back to notification", e)
+            }
+        }
+        return if (launchViaNotification(intent, tapText)) LaunchOutcome.NOTIFIED else LaunchOutcome.FAILED
+    }
+
+    /** Posts a tap-to-launch notification for [intent] — the fallback way to
+     * open another app (WhatsApp, the dialer) from a background Service when
+     * [launchApp] can't start it directly; a direct startActivity() call here
+     * is silently dropped by Android's background activity-launch
+     * restrictions (API 29+), with no exception to catch.
      *
      * Checks notification permission first and speaks up if it's off — this
      * would otherwise fail exactly as silently as the restriction above:

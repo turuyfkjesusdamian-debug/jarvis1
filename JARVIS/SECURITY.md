@@ -166,6 +166,31 @@ from Threat model #3 applies just as it does in `app/`:
   should still show the user what will happen (e.g. a search page, not a
   blind auto-play) rather than guessing on their behalf.
 
+**How these actions actually launch (`SYSTEM_ALERT_WINDOW`, optional):**
+Android blocks a background `Service` from calling `startActivity()`
+directly (API 29+), so every action above needs a workaround. There are
+two, tried in this order (`JarvisListenerService.launchApp`):
+
+1. **Direct launch**, only available if the user has granted the
+   optional "Mostrar sobre otras apps" (`SYSTEM_ALERT_WINDOW`)
+   permission. JARVIS never draws anything visible with it — the only
+   use is `addInvisibleOverlayIfPermitted`, which keeps a permanently
+   invisible 1×1 window up for as long as the listener runs, purely
+   because Android only exempts a background `Service` from the
+   activity-launch restriction while it's actually holding a window of
+   type `TYPE_APPLICATION_OVERLAY` (holding the permission alone isn't
+   enough). This is *why* the permission is requested at all — never add
+   real overlay UI (a floating button, a draggable widget, anything a
+   user could see or tap through) without re-reading this section first,
+   since that's the exact capability class (tapjacking, phishing
+   overlays) this permission is normally associated with.
+2. **Tap-to-open notification** (`launchViaNotification`) — the
+   original, always-available fallback if the permission was never
+   granted, a ROM blocks it, or the direct call throws for any reason.
+   Nothing about the confirmation-required/not distinction above changes
+   based on which path actually launches the app — only the spoken
+   wording differs ("toque la notificación" vs "ahí tiene").
+
 ## Reviewing changes
 
 Any PR/change that:

@@ -168,20 +168,39 @@ see "What's missing" below.
   first, so a wrong guess is still caught before anything sends.
   "reproduce/busca X en YouTube", "abre X", "cómo llego a/de X (a Y)", and
   "busca X cerca" need **no confirmation** (opening an app or a search/
-  route page affects no one but the user) and use the same
-  notification-launch mechanism. The Maps commands open Google's own
-  public "Maps URLs" links (no API key, no new Android permission — Maps
-  supplies current location itself) but don't read the answer back out
-  loud; the user was asked and chose this free/no-setup version over the
-  spoken-answer one, which would need a Google Maps Platform API key and
-  a billing account on file. "Jarvis apágate" stops the listener and
-  fully closes the app, also no confirmation needed. See
+  route page affects no one but the user). The Maps commands open
+  Google's own public "Maps URLs" links (no API key, no new Android
+  permission — Maps supplies current location itself) but don't read the
+  answer back out loud; the user was asked and chose this free/no-setup
+  version over the spoken-answer one, which would need a Google Maps
+  Platform API key and a billing account on file. "Jarvis apágate" stops
+  the listener and fully closes the app, also no confirmation needed. See
   `JARVIS/SECURITY.md` § Android app actions and
   `JARVIS/ARCHITECTURE.md` § Decisions for the full design and the
   confirmation-vs-not distinction.
+- **App-launching commands can now open directly, skipping the
+  notification** — an optional "Mostrar sobre otras apps"
+  (`SYSTEM_ALERT_WINDOW`) permission, requested the same way as the
+  battery-optimization exemption, lets `JarvisListenerService` hold a
+  permanently invisible 1×1 overlay window that satisfies one of
+  Android's background-activity-launch exemptions; every command above
+  (open app, YouTube, Maps, WhatsApp, calls) tries a direct
+  `startActivity()` first and only falls back to the tap-to-open
+  notification if that permission was never granted. JARVIS never draws
+  anything visible with this permission. See `JARVIS/SECURITY.md` §
+  Android app actions and `JARVIS/ARCHITECTURE.md` § Decisions.
 
 ## What's missing / next steps
 
+- **The direct-launch overlay permission needs a real-device test** — the
+  documented Android exemption (`SYSTEM_ALERT_WINDOW` + an active
+  `TYPE_APPLICATION_OVERLAY` window) has never been exercised on real
+  hardware from this sandbox. Needs confirming: granting "Mostrar sobre
+  otras apps" then restarting the listener actually makes "abre X" open
+  the app with no notification at all, that MIUI doesn't add its own
+  extra layer of restriction on top of stock Android's, and that
+  declining the permission still leaves every command working exactly as
+  before (notification fallback).
 - **The redesigned Android UI (`OrbView`, the new `activity_main.xml`)
   needs a real-device look** — untested outside this environment like
   every Android UI change so far. Worth specifically confirming: the orb

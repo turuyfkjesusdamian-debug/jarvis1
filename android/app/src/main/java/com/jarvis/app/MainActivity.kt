@@ -170,6 +170,7 @@ class MainActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
                 requestBatteryOptimizationExemption()
+                requestOverlayPermission()
                 ensurePermissionsThenStart()
             }
         }
@@ -242,6 +243,23 @@ class MainActivity : AppCompatActivity() {
             } catch (_: Exception) {
                 // Some ROMs (MIUI included) don't support this intent directly —
                 // the user then needs to grant it manually from Settings.
+            }
+        }
+    }
+
+    /**
+     * Optional: with "Mostrar sobre otras apps" granted, JarvisListenerService
+     * can open apps/WhatsApp/the dialer directly instead of via a tap-to-open
+     * notification (see JarvisListenerService.addInvisibleOverlayIfPermitted).
+     * Never required — the listener falls back to the notification if this is
+     * never granted or the ROM doesn't support the settings intent.
+     */
+    private fun requestOverlayPermission() {
+        if (!Settings.canDrawOverlays(this)) {
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            } catch (_: Exception) {
+                // Not supported on this ROM — commands just keep using the notification.
             }
         }
     }
