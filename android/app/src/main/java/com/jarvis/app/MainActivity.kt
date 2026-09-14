@@ -36,6 +36,7 @@ class MainActivity : AppCompatActivity() {
         val testMessageInput = findViewById<EditText>(R.id.test_message_input)
         val sendTestButton = findViewById<Button>(R.id.send_test_button)
         val replyText = findViewById<TextView>(R.id.reply_text)
+        val audioStatus = findViewById<TextView>(R.id.audio_status)
 
         val savedUrl = prefs.getString("server_url", "")
         serverUrlInput.setText(savedUrl)
@@ -74,36 +75,52 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             replyText.text = "Pensando…"
+            audioStatus.text = ""
 
             runInBackground(
                 work = { api.sendMessage(message) },
                 onSuccess = { chatReply ->
                     replyText.text = chatReply.reply
-                    speak(chatReply.reply)
+                    speak(chatReply.reply, audioStatus)
                 },
                 onError = { err -> replyText.text = "Error: ${err.message}" },
             )
         }
     }
 
-    private fun speak(text: String) {
+    private fun speak(text: String, audioStatus: TextView) {
         if (text.isBlank()) return
+        audioStatus.text = "Generando audio…"
         runInBackground(
             work = { api.synthesizeSpeech(text) },
-            onSuccess = { audioBytes -> playAudio(audioBytes) },
-            onError = { /* no ElevenLabs configured, or it failed — text reply still shown */ },
+            onSuccess = { audioBytes -> playAudio(audioBytes, audioStatus) },
+            onError = { err -> audioStatus.text = "Audio: ${err.message}" },
         )
     }
 
-    private fun playAudio(bytes: ByteArray) {
-        val file = File(cacheDir, "jarvis_reply.mp3")
-        FileOutputStream(file).use { it.write(bytes) }
-        mediaPlayer?.release()
-        mediaPlayer = MediaPlayer().apply {
-            setDataSource(file.absolutePath)
-            setOnPreparedListener { start() }
-            setOnCompletionListener { it.release() }
-            prepareAsync()
+    private fun playAudio(bytes: ByteArray, audioStatus: TextView) {
+        try {
+            val file = File(cacheDir, "jarvis_reply.mp3")
+            FileOutputStream(file).use { it.write(bytes) }
+            mediaPlayer?.release()
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(file.absolutePath)
+                setOnPreparedListener {
+                    audioStatus.text = "Reproduciendo…"
+                    start()
+                }
+                setOnCompletionListener {
+                    audioStatus.text = "Audio reproducido."
+                    it.release()
+                }
+                setOnErrorListener { _, what, extra ->
+                    audioStatus.text = "Error al reproducir audio ($what/$extra)"
+                    true
+                }
+                prepareAsync()
+            }
+        } catch (e: Exception) {
+            audioStatus.text = "Error al reproducir audio: ${e.message}"
         }
     }
 

@@ -119,5 +119,14 @@
             android:text="La respuesta de JARVIS va a aparecer aquí."
             android:textColor="#EDE9FE" />
 
+        <TextView
+            android:id="@+id/audio_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text=""
+            android:textColor="#9A8BC4"
+            android:textSize="13sp" />
+
     </LinearLayout>
 </ScrollView>
