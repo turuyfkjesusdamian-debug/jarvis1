@@ -133,38 +133,36 @@ see "What's missing" below.
 
 ## What's missing / next steps
 
-- **Android app milestone 2 needs a real-device test** — untested outside
-  this environment (no device/emulator available to Claude, same
-  constraint as milestone 1). Needs: confirming the wake word is
-  recognized reliably, that replies are both heard and sensible, and then
-  walking the user through Xiaomi/MIUI's separate "autostart" toggle
-  (no public API to request it, must be granted manually in MIUI's
-  Security app) since the battery-optimization exemption alone is
-  unlikely to be enough to keep a background listener alive there.
-- **Render's environment variables need `JARVIS_APP_PASSWORD` added** for
-  the new password gate to actually activate (`jarvis-12lx.onrender.com`
-  currently has none set, so the app is still open to anyone with the
-  link). The user needs to pick a password, add it on Render, redeploy,
-  then log in once on their phone — the session persists for a year.
-- **Gemini, the deterministic tool flows, and ElevenLabs speech output are
-  all confirmed working live on Render** — the user tested "hola cómo
-  estás?" and "¿qué tengo hoy?" (Gemini + tools), and, after switching
-  `ELEVENLABS_VOICE_ID` to a premade voice id (a Voice-Library voice
-  returns `402 paid_plan_required` on ElevenLabs' Free plan — see
-  `JARVIS/ARCHITECTURE.md` § Decisions), confirmed hearing a real spoken
-  reply from the Android app. The user's original chosen voice can be
-  restored later if they upgrade their ElevenLabs plan, or a self-cloned
-  voice turns out to work on the Free plan — just swap
-  `ELEVENLABS_VOICE_ID` again, no code change needed either way.
-- **The browser Web Speech API voice loop was exercised once live on
-  Render and worked** (the user spoke into the mic and got a correct
-  transcription + reply), but reliability across repeated use on the
-  user's actual phone/browser hasn't been confirmed yet.
-- **The PWA install flow has not been tested on the user's phone yet** —
-  manifest/icons/service worker were verified to be reachable and
-  well-formed from this sandbox, but "Add to Home Screen" actually
-  producing a proper full-screen app icon needs to be checked on a real
-  Android Chrome.
+- **An external uptime pinger needs to be pointed at `GET /healthz`** to
+  stop Render's free tier from spinning the service down after 15 minutes
+  idle — this is what caused the "sometimes instant, sometimes 30+
+  seconds" delay the user reported once the Android wake-word listener
+  made idle periods between uses obvious. The endpoint exists
+  (unauthenticated, reveals nothing); the user still needs to set up the
+  pinger itself (e.g. a free UptimeRobot monitor, ~5 minute interval) —
+  see `JARVIS/ARCHITECTURE.md` § Decisions for why a GitHub Actions
+  `schedule:` trigger was considered and rejected (too unreliable at this
+  interval on a low-activity repo).
+- **Android app milestone 2 (background wake-word listener) confirmed
+  working live** — the user tested "oye jarvis" and got it recognized and
+  answered correctly, called it "increíble." Boot-persistence
+  (`BootReceiver`, restarts the listener after a reboot if it was on)
+  shipped right after but its actual reboot behavior on the user's phone
+  hasn't been confirmed yet — still depends on MIUI's separate "Inicio
+  automático" (autostart) toggle being granted, with no public API to
+  request it.
+- **Gemini, the deterministic tool flows, ElevenLabs speech output, the
+  password gate, and the Android app are all confirmed working live on
+  Render and the user's phone** together, end to end. The user's original
+  ElevenLabs voice choice (a Voice-Library voice, `402 paid_plan_required`
+  on the Free plan) can be restored later if they upgrade their ElevenLabs
+  plan or a self-cloned voice works on Free — just swap
+  `ELEVENLABS_VOICE_ID` again, no code change needed.
+- **The browser Web Speech API voice loop and the PWA install flow
+  (web, not the Android app) have each only been exercised once or not at
+  all live** — not blocking anything, just not re-verified since the
+  Android app became the primary way the user interacts with JARVIS by
+  voice.
 - **Known, unchanged scope gap**: natural-language voice/text commands
   don't route to write-capable tools (`tasks.createTask`,
   `memory.saveMemory` via explicit command, etc.) beyond the existing

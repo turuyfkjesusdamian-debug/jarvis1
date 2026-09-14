@@ -70,7 +70,7 @@ JARVIS is split into two halves that share a filesystem but not a runtime:
   The core has no Gemini/ElevenLabs-specific types; it only sees
   `generateConversationalReply()` and `synthesizeSpeech()`.
 - `server/` — HTTP endpoints (`/api/chat`, `/api/tts`, `/api/tools`,
-  `/api/status`, `/api/auth/{login,logout}`), the optional password-gate
+  `/api/status`, `/api/auth/{login,logout}`, `/healthz`), the optional password-gate
   middleware (`server/auth.ts`, see `JARVIS/SECURITY.md` § Access
   control), and static file serving for `public/`.
 - `logging/` — one structured logger used everywhere; never `console.log`
@@ -161,6 +161,19 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Added a public `GET /healthz` endpoint
+  (`app/src/server/app.ts`, returns `{ok:true}`, no auth required) so an
+  external uptime pinger can keep Render's free-tier service from
+  spinning down after 15 minutes idle — the user reported exactly that
+  symptom (usually fast, but sometimes a 30+ second delay) once the
+  Android wake-word listener made it obvious how often the server was
+  sitting idle between uses. Deliberately reveals nothing beyond "the
+  process responded" — no vault data, no config, unlike `/api/status`.
+  Recommended pinger: an external service (e.g. UptimeRobot's free tier,
+  ~5 minute interval) rather than a GitHub Actions scheduled workflow —
+  GitHub explicitly deprioritizes `schedule:` triggers on low-activity
+  repos and can delay them by many minutes, which defeats the purpose
+  when Render's spin-down window is only 15 minutes.
 - **2026-09-14** — Added `BootReceiver` so the "oye jarvis" listener
   restarts itself after the phone reboots, if the user had it turned on —
   otherwise every reboot would silently defeat the point of a background

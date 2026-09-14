@@ -14,8 +14,12 @@ const srcDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const publicDir = path.join(srcDir, "..", "public");
 
 // Reachable without a valid session: the login page itself, the endpoints
-// it calls, and PWA metadata a browser may fetch before a user is logged in.
-const PUBLIC_PATHS = new Set(["/api/auth/login", "/api/auth/logout", "/login.html", "/manifest.json", "/sw.js"]);
+// it calls, PWA metadata a browser may fetch before a user is logged in,
+// and the health check an external uptime pinger hits to stop Render's
+// free tier from spinning the service down after 15 minutes idle (see
+// JARVIS/ARCHITECTURE.md § Decisions) — it must be reachable without a
+// password, since a pinger can't log in.
+const PUBLIC_PATHS = new Set(["/api/auth/login", "/api/auth/logout", "/login.html", "/manifest.json", "/sw.js", "/healthz"]);
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.has(pathname) || pathname.startsWith("/icons/");
 }
@@ -26,6 +30,14 @@ export async function createApp(vaultPath: string): Promise<{ app: Express; core
 
   const app = express();
   app.use(express.json());
+
+  // Deliberately reveals nothing beyond "the process is up" — an external
+  // pinger (e.g. UptimeRobot) hits this every few minutes to keep Render's
+  // free tier from spinning down, which is what caused the 30+ second
+  // cold-start delays the user reported.
+  app.get("/healthz", (_req, res) => {
+    res.status(200).json({ ok: true });
+  });
 
   // Single-user password gate (see JARVIS/SECURITY.md § Access control).
   // No-op when JARVIS_APP_PASSWORD isn't set, so existing deployments
