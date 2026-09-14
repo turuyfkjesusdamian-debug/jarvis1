@@ -77,6 +77,11 @@ class JarvisListenerService : Service(), RecognitionListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            // Also stopped via the notification's own "Detener" action, not
+            // just MainActivity's toggle — keep the persisted flag in sync
+            // either way, so a later reboot doesn't restart a listener the
+            // user explicitly turned off.
+            getSharedPreferences("jarvis", MODE_PRIVATE).edit().putBoolean("listener_enabled", false).apply()
             stopListening()
             stopSelf()
             return START_NOT_STICKY

@@ -161,6 +161,19 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Added `BootReceiver` so the "oye jarvis" listener
+  restarts itself after the phone reboots, if the user had it turned on —
+  otherwise every reboot would silently defeat the point of a background
+  listener, requiring the user to reopen the app and tap the toggle again
+  each time. A `listener_enabled` flag in `SharedPreferences`, set/cleared
+  by `MainActivity`'s toggle and also by `JarvisListenerService` itself
+  when stopped via the notification's "Detener" action (so both stop
+  paths stay in sync), is what `BootReceiver` checks on
+  `BOOT_COMPLETED`. Same MIUI caveat as everywhere else in this
+  sub-project: without the phone's separate "Inicio automático"
+  (autostart) permission granted, MIUI won't even deliver the boot
+  broadcast to the app, so this alone doesn't remove the need for that
+  manual step.
 - **2026-09-14** — Implemented milestone 2 of the Android companion app:
   the actual "oye jarvis" background wake-word listener
   (`android/app/src/main/java/com/jarvis/app/JarvisListenerService.kt`),

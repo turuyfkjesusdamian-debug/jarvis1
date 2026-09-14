@@ -156,12 +156,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startListenerService() {
+        prefs.edit().putBoolean("listener_enabled", true).apply()
         val intent = Intent(this, JarvisListenerService::class.java)
         ContextCompat.startForegroundService(this, intent)
         updateListenerButtonUi(startingNow = true)
     }
 
     private fun stopListenerService() {
+        prefs.edit().putBoolean("listener_enabled", false).apply()
         startService(Intent(this, JarvisListenerService::class.java).setAction(JarvisListenerService.ACTION_STOP))
         updateListenerButtonUi()
     }
