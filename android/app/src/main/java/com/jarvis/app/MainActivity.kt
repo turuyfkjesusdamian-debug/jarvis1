@@ -231,6 +231,12 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
                 work = { api.sendMessage(message) },
                 onSuccess = { chatReply ->
                     addChatBubble(chatReply.reply, isUser = false)
+                    // The server already sends the real reason it fell back to the
+                    // templated reply (e.g. Gemini quota/key errors) — previously
+                    // discarded here, which made "Entendido, señor." undiagnosable
+                    // from the app. Shown as a small note in the transcript (not
+                    // audioStatus, which speak() immediately overwrites below).
+                    chatReply.debugError?.let { addSystemNote("Aviso del servidor: $it") }
                     if (prefs.getBoolean("speak_replies_enabled", true)) {
                         speak(chatReply.reply)
                     } else {
@@ -288,6 +294,29 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
             maxWidth = (resources.displayMetrics.widthPixels * 0.78f).toInt()
         }
         row.addView(bubble)
+        conversationContainer.addView(row)
+        conversationScroll.post { conversationScroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    /** A small centered status line in the transcript — matches the web UI's
+     * muted ".turn.tool" style. Used for server diagnostics (debugError)
+     * that shouldn't be mistaken for something JARVIS actually said. */
+    private fun addSystemNote(text: String) {
+        conversationHint.visibility = View.GONE
+        val note = TextView(this).apply {
+            this.text = text
+            setTextColor(Color.parseColor("#9A8BC4"))
+            textSize = 11f
+            gravity = Gravity.CENTER
+        }
+        val row = LinearLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(6) }
+            gravity = Gravity.CENTER
+        }
+        row.addView(note)
         conversationContainer.addView(row)
         conversationScroll.post { conversationScroll.fullScroll(View.FOCUS_DOWN) }
     }

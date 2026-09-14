@@ -161,6 +161,32 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Two more fixes, both from live testing on the redesigned
+  screen:
+  1. **General chit-chat replying only "Entendido, señor."** — the user
+     saw this on a real question and had no way to tell why. Root cause
+     wasn't new: `JarvisCore.composeReplyForIntent` already sends a
+     `debugError` field with the real reason whenever the Gemini call
+     fails (bad/expired key, quota, network) and it falls back to the
+     templated reply, and `/api/chat` already includes it in the JSON
+     response, and `JarvisApiClient.ChatReply` already parsed it — but
+     `MainActivity`'s chat handler silently discarded it, so every
+     Gemini failure was undiagnosable from the app. Now shown as a small
+     centered note in the transcript (`addSystemNote`, matching the web
+     UI's muted `.turn.tool` style) whenever `debugError` is non-null.
+     This doesn't fix whatever is wrong with Gemini on the user's Render
+     deployment (unknown until they see the actual note text) — it makes
+     the *next* occurrence self-diagnosing instead of a mystery.
+  2. **The full-width orb (see the entry below) took too much vertical
+     space, crowding out the chat** — reverted to a fixed, centered box,
+     smaller than before (260dp → 220dp) since the user specifically
+     asked for more room for the conversation. Kept the denser
+     particles/bigger `baseRadius` from the same round of tuning; only
+     the container's screen-filling behavior was undone.
+  This is the second time in a row an orb-sizing change needed a second
+  pass after being seen live — there is no way to get this fully right
+  without a real device in the loop, so treat any single tuning pass as
+  provisional until the user confirms it, not as done.
 - **2026-09-14** — Two follow-ups after the user saw the previous orb
   resize on a real phone and pointed out its corners weren't filled:
   (1) `activity_main.xml`'s orb container is now a full-width square (an

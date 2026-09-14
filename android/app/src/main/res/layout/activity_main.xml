@@ -4,7 +4,6 @@
      the Android app looks like the web one — see JARVIS/ARCHITECTURE.md §
      Decisions. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_gradient"
@@ -66,33 +65,23 @@
         android:layout_weight="1"
         android:orientation="vertical"
         android:gravity="center_horizontal"
+        android:paddingHorizontal="16dp"
         android:paddingTop="8dp">
 
-        <!-- Full screen width, not a smaller centered box — the orb itself
-             (see OrbView's baseRadius) is sized to fill most of this square,
-             leaving only the corners visible as background (a round sphere
-             inscribed in a square frame, same as the web version). -->
-        <androidx.constraintlayout.widget.ConstraintLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp">
-
-            <com.jarvis.app.OrbView
-                android:id="@+id/orb_view"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                app:layout_constraintDimensionRatio="1:1"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
-        </androidx.constraintlayout.widget.ConstraintLayout>
+        <!-- Back to a fixed, smaller box (was briefly full screen width) —
+             the user asked for more room for the chat below it. OrbView's
+             own baseRadius (see OrbView.kt) still fills this box well. -->
+        <com.jarvis.app.OrbView
+            android:id="@+id/orb_view"
+            android:layout_width="220dp"
+            android:layout_height="220dp"
+            android:layout_marginBottom="12dp" />
 
         <ScrollView
             android:id="@+id/conversation_scroll"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginHorizontal="16dp"
             android:background="#8C12092A"
             android:padding="10dp"
             android:scrollbars="none">

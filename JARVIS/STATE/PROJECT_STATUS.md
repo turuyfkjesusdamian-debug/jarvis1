@@ -189,35 +189,50 @@ see "What's missing" below.
   notification if that permission was never granted. JARVIS never draws
   anything visible with this permission. See `JARVIS/SECURITY.md` §
   Android app actions and `JARVIS/ARCHITECTURE.md` § Decisions.
-- **Orb tuned bigger/denser, plus three small UI additions** — the orb
-  container is now a full-width square (edge to edge, via a
-  `ConstraintLayout` 1:1-ratio wrapper) instead of a smaller centered
-  260dp box, with ~1.5x more particles, roughly doubled particle size,
-  and `baseRadius` bumped (0.34→0.38) so the sphere itself fills more of
-  that square — after two rounds of the user pointing out it looked
-  sparse/dim and didn't use the available space on a real phone (no
-  device profiling behind any of these numbers — first thing to dial
-  back if a real phone drops frames). `MainActivity` also gained: a
-  "Comandos" button (a plain `AlertDialog` listing every voice command,
-  deliberately separate from "Detalles"); a "Leer las respuestas de
-  JARVIS en voz alta" switch inside "Detalles" that mutes automatic TTS
-  playback for typed chat replies only (the background listener always
-  speaks); and a "Volumen de la voz de JARVIS" slider, also in
-  "Detalles", backed by one `"jarvis_volume"` preference that both
-  `MainActivity` and `JarvisListenerService` read — one control for
-  JARVIS's voice volume everywhere, not just the chat screen. See
+- **Orb tuned bigger/denser (now settled back to a fixed 220dp box), plus
+  three small UI additions and a diagnostics fix** — after a round where
+  the orb briefly went full-screen-width and the user asked for that
+  space back for the chat, the container is a fixed centered box again
+  (220dp, down from 260dp) while keeping the denser particles (~1.5x per
+  ring), bigger particle size, and bumped `baseRadius` (0.34→0.38) from
+  the same tuning pass (no device profiling behind any of these numbers
+  — first thing to dial back if a real phone drops frames).
+  `MainActivity` also gained: a "Comandos" button (a plain `AlertDialog`
+  listing every voice command, deliberately separate from "Detalles"); a
+  "Leer las respuestas de JARVIS en voz alta" switch inside "Detalles"
+  that mutes automatic TTS playback for typed chat replies only (the
+  background listener always speaks); and a "Volumen de la voz de
+  JARVIS" slider, also in "Detalles", backed by one `"jarvis_volume"`
+  preference that both `MainActivity` and `JarvisListenerService` read.
+  Separately: general chit-chat replying with only "Entendido, señor."
+  turned out to be an existing, silent gap — the server already sends
+  *why* it fell back to the template (`debugError`, e.g. a Gemini
+  key/quota problem) and the Android client already parsed that field,
+  but `MainActivity` discarded it instead of showing it. Now surfaced as
+  a small note in the chat transcript (`addSystemNote`) — this doesn't
+  fix whatever's actually wrong with Gemini on the user's deployment
+  (unknown until the note's text is seen), it just makes the next
+  occurrence diagnosable instead of a silent mystery. See
   `JARVIS/ARCHITECTURE.md` § Decisions.
 
 ## What's missing / next steps
 
-- **The bigger/denser, now edge-to-edge orb needs a real-device look** —
-  same untested-outside-this-sandbox caveat as every other Android UI
-  change, now on its second tuning pass from live user feedback. Worth
-  confirming specifically: the corners of the square still show
-  background (expected — a round sphere can't reach a square's corners,
-  this isn't a bug), ~540 particles/frame doesn't drop frames on the
-  software-rendered buffer canvas, the brighter/slower-fading glow
-  doesn't look muddy or oversaturated, and the volume slider actually
+- **Why Gemini calls are failing on the user's Render deployment is
+  still unknown** — the "Entendido, señor." bug report turned out to be
+  an existing silent-failure gap in the Android app (now fixed, see
+  above), not a new regression, but the *underlying* Gemini failure
+  itself hasn't been diagnosed yet. Next step: get the actual
+  `debugError` text from the app's new note next time it happens, and
+  check Render's env vars / logs for `GEMINI_API_KEY` validity and
+  quota.
+- **The orb — now back to a fixed 220dp box — needs a real-device look
+  after its third tuning pass**, same untested-outside-this-sandbox
+  caveat as every other Android UI change. Worth confirming
+  specifically: it now leaves clearly more room for the chat than the
+  briefly-shipped full-width version did, the corners of the square
+  still show background (expected — a round sphere can't reach a
+  square's corners, not a bug), ~540 particles/frame doesn't drop frames
+  on the software-rendered buffer canvas, and the volume slider actually
   changes both the chat screen's and the background listener's voice.
 
 - **The direct-launch overlay permission needs a real-device test** — the
