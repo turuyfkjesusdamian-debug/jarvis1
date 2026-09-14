@@ -120,9 +120,22 @@ see "What's missing" below.
 - **Android companion app** (`android/`, milestone 1 of 2 confirmed
   working on the user's real phone — see `JARVIS/ARCHITECTURE.md` §
   Decisions): a Kotlin app with a login screen (server URL +
-  `JARVIS_APP_PASSWORD`) and a "test message" button that exercises
-  `/api/auth/login` → `/api/chat` → `/api/tts` end to end, reusing the
-  exact same backend the web UI talks to. Built by
+  `JARVIS_APP_PASSWORD`) and a real chat screen (not just a "test
+  message" box anymore) that exercises `/api/auth/login` → `/api/chat` →
+  `/api/tts` end to end, reusing the exact same backend the web UI talks
+  to. **Now visually designed to match the web UI**: `OrbView.kt` is a
+  native port of `app/public/orb.js`'s purple particle sphere (same
+  ring/rotation math, drag-to-spin with inertia, real audio-reactive
+  energy — a fixed pulse while waiting for a reply, then live TTS
+  waveform data via `android.media.audiofx.Visualizer` while JARVIS
+  speaks), and `activity_main.xml` mirrors the web layout: topbar with
+  status pills, the orb centered, a scrolling chat transcript with
+  user/assistant bubbles, a pill-shaped input row, and the server
+  URL/password fields tucked into a collapsible "Detalles" panel instead
+  of always showing. This is a hand-maintained native copy of the web
+  design, not a shared component — a future change to the web's
+  orb.js/styles.css won't automatically reach here, see
+  `JARVIS/ARCHITECTURE.md` § Decisions. Built by
   `.github/workflows/android-build.yml` on GitHub Actions (this sandbox
   can't reach the Android SDK servers to build it directly) and published
   to a GitHub Release (`android-latest`) since Actions artifacts are also
@@ -169,6 +182,17 @@ see "What's missing" below.
 
 ## What's missing / next steps
 
+- **The redesigned Android UI (`OrbView`, the new `activity_main.xml`)
+  needs a real-device look** — untested outside this environment like
+  every Android UI change so far. Worth specifically confirming: the orb
+  animates smoothly (Choreographer-driven, should hold 60fps on a modern
+  phone, but MIUI/low-end devices can behave differently), the
+  `PorterDuff.Mode.ADD` glow actually renders (additive blending onto a
+  plain `Bitmap` canvas should be safe, but hasn't been seen on real
+  hardware), the `Visualizer`-driven energy visibly reacts while JARVIS
+  speaks, and the collapsible "Detalles" panel doesn't hide the
+  login/server fields so well that the user can't find them the first
+  time they open the app.
 - **"Abre X", the YouTube search command, and the new Maps commands need
   a real-device test** — untested outside this environment, same
   constraint as every Android feature so far. Needs confirming: the

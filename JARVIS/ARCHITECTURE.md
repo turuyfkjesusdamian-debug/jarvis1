@@ -161,6 +161,44 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Gave the Android app the same visual design as the web
+  UI: a native `OrbView.kt` custom `View` ports `app/public/orb.js`'s
+  particle-sphere rendering (same ring math, rotation, drag-to-spin with
+  inertia, energy-driven scale/brightness) to Android `Canvas`, and
+  `activity_main.xml` was redesigned to mirror `index.html`/`styles.css`'s
+  layout (topbar with status pills, the orb centered, a scrolling
+  conversation with user/assistant bubbles, a pill-shaped input row, a
+  collapsible "Detalles" panel for the server/password fields that used
+  to always be visible). The "mensaje de prueba" single-reply box became
+  a real, persistent chat transcript. The user was asked to choose
+  between embedding the actual web page in a WebView (pixel-identical,
+  but Android's WebView doesn't support the Web Speech API the web mic
+  button needs) versus a native reimplementation (more work, no
+  limitations, but a second copy of the design to keep in sync); they
+  chose native. Implementation notes for whoever touches this next:
+  - Android `Canvas` has no `globalCompositeOperation = "lighter"`
+    equivalent on a `View`'s own canvas, so `OrbView` draws into its own
+    offscreen `Bitmap`/`Canvas` every frame (needed anyway for the
+    fade-trail effect, since a `View`'s `onDraw` canvas isn't guaranteed
+    to retain the previous frame's pixels) and uses
+    `PorterDuffXfermode(PorterDuff.Mode.ADD)` for the glow elements
+    (rays, particles, core) — additive blending works reliably on a
+    plain `Bitmap`-backed `Canvas` regardless of the view's hardware
+    layer type, unlike blending directly against a hardware-accelerated
+    view canvas.
+  - The orb's energy is driven by two sources instead of one: a fixed
+    gentle pulse while waiting for the server's reply ("thinking"), then
+    real TTS waveform data via `android.media.audiofx.Visualizer`
+    attached to the `MediaPlayer`'s audio session while it plays — the
+    closest native equivalent to the web version's real
+    `AnalyserNode`-driven energy. `Visualizer` needs `RECORD_AUDIO`
+    (already granted for the background listener), and is wrapped in a
+    try/catch since some ROMs restrict it — falls back to the orb's own
+    baseline idle animation, never a crash.
+  - Any future web design change (`app/public/orb.js`,
+    `styles.css`) has no automatic effect on the Android app — this is a
+    second, hand-maintained copy of the same visual language, not a
+    shared component. Update both intentionally.
 - **2026-09-14** — Added Google Maps commands: "cómo llego a X", "cómo
   llego de X a Y" (directions), and "busca X cerca" (nearby search) —
   `tryParseMapsCommand`/`launchDirections` in `JarvisListenerService.kt`.

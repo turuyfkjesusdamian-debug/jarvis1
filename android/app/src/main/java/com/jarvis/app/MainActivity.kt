@@ -2,7 +2,9 @@ package com.jarvis.app
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.media.MediaPlayer
+import android.media.audiofx.Visualizer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -10,19 +12,28 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.view.Gravity
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.sqrt
 
 /**
- * Milestone 1 (login + a manual test message) plus milestone 2 (toggling
- * the "oye jarvis" background listener, JarvisListenerService) — see
- * JARVIS/ARCHITECTURE.md § Decisions.
+ * Milestone 1 (login + chat) plus milestone 2 (toggling the "oye jarvis"
+ * background listener, JarvisListenerService) — see JARVIS/ARCHITECTURE.md
+ * § Decisions. The screen is a native port of the web UI's look (topbar
+ * with status pills, the purple particle orb, a scrolling conversation,
+ * a pill-shaped input row) via [OrbView] and the drawables under
+ * res/drawable — same visual language, not a WebView embedding it, per
+ * the user's choice.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -30,8 +41,19 @@ class MainActivity : AppCompatActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var api: JarvisApiClient
     private var mediaPlayer: MediaPlayer? = null
+    private var visualizer: Visualizer? = null
+
+    private lateinit var orbView: OrbView
+    private lateinit var connStatusPill: TextView
+    private lateinit var listenStatusPill: TextView
     private lateinit var listenerStatus: TextView
     private lateinit var toggleListenerButton: Button
+    private lateinit var conversationScroll: ScrollView
+    private lateinit var conversationContainer: LinearLayout
+    private lateinit var conversationHint: TextView
+    private lateinit var audioStatus: TextView
+    private lateinit var detailsPanel: LinearLayout
+    private lateinit var detailsToggle: TextView
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -53,23 +75,39 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        orbView = findViewById(R.id.orb_view)
+        connStatusPill = findViewById(R.id.conn_status_pill)
+        listenStatusPill = findViewById(R.id.listen_status_pill)
+        conversationScroll = findViewById(R.id.conversation_scroll)
+        conversationContainer = findViewById(R.id.conversation_container)
+        conversationHint = findViewById(R.id.conversation_hint)
+        val chatInput = findViewById<EditText>(R.id.chat_input)
+        val sendButton = findViewById<Button>(R.id.send_button)
+        audioStatus = findViewById(R.id.audio_status)
+        toggleListenerButton = findViewById(R.id.toggle_listener_button)
+        listenerStatus = findViewById(R.id.listener_status)
+        detailsToggle = findViewById(R.id.details_toggle)
+        detailsPanel = findViewById(R.id.details_panel)
         val serverUrlInput = findViewById<EditText>(R.id.server_url_input)
         val passwordInput = findViewById<EditText>(R.id.password_input)
         val loginButton = findViewById<Button>(R.id.login_button)
         val loginStatus = findViewById<TextView>(R.id.login_status)
-        val testMessageInput = findViewById<EditText>(R.id.test_message_input)
-        val sendTestButton = findViewById<Button>(R.id.send_test_button)
-        val replyText = findViewById<TextView>(R.id.reply_text)
-        val audioStatus = findViewById<TextView>(R.id.audio_status)
-        toggleListenerButton = findViewById(R.id.toggle_listener_button)
-        listenerStatus = findViewById(R.id.listener_status)
 
         val savedUrl = prefs.getString("server_url", "")
         serverUrlInput.setText(savedUrl)
         api = JarvisApiClient(savedUrl ?: "")
         api.restoreSession(prefs.getString("session_cookie", null))
         if (api.hasSession()) {
-            loginStatus.text = "Sesión guardada. Puedes enviar un mensaje de prueba."
+            loginStatus.text = "Sesión guardada. Puedes escribirle a JARVIS."
+            setConnected(true)
+        } else {
+            setConnected(false)
+        }
+
+        detailsToggle.setOnClickListener {
+            val opening = detailsPanel.visibility != View.VISIBLE
+            detailsPanel.visibility = if (opening) View.VISIBLE else View.GONE
+            detailsToggle.text = if (opening) "Detalles ▴" else "Detalles ▾"
         }
 
         loginButton.setOnClickListener {
@@ -88,28 +126,37 @@ class MainActivity : AppCompatActivity() {
                 onSuccess = {
                     prefs.edit().putString("session_cookie", api.currentSessionCookie()).apply()
                     loginStatus.text = "Sesión iniciada correctamente."
+                    setConnected(true)
                 },
-                onError = { err -> loginStatus.text = "Error: ${err.message}" },
+                onError = { err ->
+                    loginStatus.text = "Error: ${err.message}"
+                    setConnected(false)
+                },
             )
         }
 
-        sendTestButton.setOnClickListener {
-            val message = testMessageInput.text.toString().trim()
+        sendButton.setOnClickListener {
+            val message = chatInput.text.toString().trim()
             if (message.isEmpty()) return@setOnClickListener
             if (!api.hasSession()) {
-                replyText.text = "Primero inicia sesión arriba."
+                addChatBubble("Primero inicia sesión en “Detalles”.", isUser = false)
                 return@setOnClickListener
             }
-            replyText.text = "Pensando…"
+            addChatBubble(message, isUser = true)
+            chatInput.setText("")
             audioStatus.text = ""
+            orbView.setEnergy(0.25f) // gentle pulse while JARVIS "thinks"
 
             runInBackground(
                 work = { api.sendMessage(message) },
                 onSuccess = { chatReply ->
-                    replyText.text = chatReply.reply
-                    speak(chatReply.reply, audioStatus)
+                    addChatBubble(chatReply.reply, isUser = false)
+                    speak(chatReply.reply)
                 },
-                onError = { err -> replyText.text = "Error: ${err.message}" },
+                onError = { err ->
+                    addChatBubble("Error: ${err.message}", isUser = false)
+                    orbView.setEnergy(0f)
+                },
             )
         }
 
@@ -119,7 +166,7 @@ class MainActivity : AppCompatActivity() {
                 stopListenerService()
             } else {
                 if (!api.hasSession()) {
-                    listenerStatus.text = "Primero inicia sesión arriba."
+                    listenerStatus.text = "Primero inicia sesión en “Detalles”."
                     return@setOnClickListener
                 }
                 requestBatteryOptimizationExemption()
@@ -132,6 +179,35 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         if (::toggleListenerButton.isInitialized) updateListenerButtonUi()
     }
+
+    private fun setConnected(connected: Boolean) {
+        connStatusPill.text = if (connected) "conexión: activa" else "conexión: ninguna"
+        connStatusPill.setBackgroundResource(if (connected) R.drawable.status_pill_bg_ok else R.drawable.status_pill_bg)
+    }
+
+    private fun addChatBubble(text: String, isUser: Boolean) {
+        conversationHint.visibility = View.GONE
+        val row = LinearLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { topMargin = dp(6) }
+            gravity = if (isUser) Gravity.END else Gravity.START
+        }
+        val bubble = TextView(this).apply {
+            this.text = text
+            setTextColor(Color.parseColor("#EDE9FE"))
+            textSize = 14f
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setBackgroundResource(if (isUser) R.drawable.chat_bubble_user else R.drawable.chat_bubble_assistant)
+            maxWidth = (resources.displayMetrics.widthPixels * 0.78f).toInt()
+        }
+        row.addView(bubble)
+        conversationContainer.addView(row)
+        conversationScroll.post { conversationScroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun ensurePermissionsThenStart() {
         // READ_CONTACTS/CALL_PHONE are requested up front too, even though
@@ -187,42 +263,111 @@ class MainActivity : AppCompatActivity() {
         val active = startingNow || JarvisListenerService.isRunning
         toggleListenerButton.text = if (active) "Detener escucha en segundo plano" else "Activar escucha en segundo plano"
         listenerStatus.text = if (active) "Escuchando “oye jarvis”…" else "Detenida."
+        listenStatusPill.text = if (active) "escucha: activa" else "escucha: detenida"
+        listenStatusPill.setBackgroundResource(if (active) R.drawable.status_pill_bg_ok else R.drawable.status_pill_bg)
     }
 
-    private fun speak(text: String, audioStatus: TextView) {
-        if (text.isBlank()) return
+    private fun speak(text: String) {
+        if (text.isBlank()) {
+            orbView.setEnergy(0f)
+            return
+        }
         audioStatus.text = "Generando audio…"
         runInBackground(
             work = { api.synthesizeSpeech(text) },
-            onSuccess = { audioBytes -> playAudio(audioBytes, audioStatus) },
-            onError = { err -> audioStatus.text = "Audio: ${err.message}" },
+            onSuccess = { audioBytes -> playAudio(audioBytes) },
+            onError = { err ->
+                audioStatus.text = "Audio: ${err.message}"
+                orbView.setEnergy(0f)
+            },
         )
     }
 
-    private fun playAudio(bytes: ByteArray, audioStatus: TextView) {
+    private fun playAudio(bytes: ByteArray) {
         try {
             val file = File(cacheDir, "jarvis_reply.mp3")
             FileOutputStream(file).use { it.write(bytes) }
+            releaseVisualizer()
             mediaPlayer?.release()
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(file.absolutePath)
                 setOnPreparedListener {
                     audioStatus.text = "Reproduciendo…"
-                    start()
+                    attachVisualizer(it.audioSessionId)
+                    it.start()
                 }
                 setOnCompletionListener {
                     audioStatus.text = "Audio reproducido."
+                    releaseVisualizer()
+                    orbView.setEnergy(0f)
                     it.release()
                 }
                 setOnErrorListener { _, what, extra ->
                     audioStatus.text = "Error al reproducir audio ($what/$extra)"
+                    releaseVisualizer()
+                    orbView.setEnergy(0f)
                     true
                 }
                 prepareAsync()
             }
         } catch (e: Exception) {
             audioStatus.text = "Error al reproducir audio: ${e.message}"
+            orbView.setEnergy(0f)
         }
+    }
+
+    /**
+     * Drives the orb's energy from the actual TTS waveform while it plays,
+     * the same real-audio-reactive behavior as the web UI's AnalyserNode
+     * (see app/public/orb.js). Requires RECORD_AUDIO (already granted for
+     * the background listener); if it's missing or the device restricts
+     * Visualizer, this just silently no-ops and the orb keeps its baseline
+     * idle animation instead of crashing.
+     */
+    private fun attachVisualizer(audioSessionId: Int) {
+        try {
+            visualizer = Visualizer(audioSessionId).apply {
+                captureSize = Visualizer.getCaptureSizeRange()[0]
+                setDataCaptureListener(
+                    object : Visualizer.OnDataCaptureListener {
+                        override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, samplingRate: Int) {
+                            orbView.setEnergy(waveformEnergy(waveform))
+                        }
+                        override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, samplingRate: Int) {}
+                    },
+                    Visualizer.getMaxCaptureRate() / 2,
+                    true,
+                    false,
+                )
+                enabled = true
+            }
+        } catch (_: Exception) {
+            // No mic permission yet, or the ROM restricts Visualizer — not fatal.
+        }
+    }
+
+    private fun waveformEnergy(waveform: ByteArray?): Float {
+        if (waveform == null || waveform.isEmpty()) return 0f
+        var sumSquares = 0.0
+        for (b in waveform) {
+            val v = (b.toInt() and 0xFF) - 128 // unsigned 8-bit PCM centered at 128
+            sumSquares += (v * v).toDouble()
+        }
+        val rms = sqrt(sumSquares / waveform.size) / 128.0
+        // Scaled up so ordinary speech volume still visibly moves the orb.
+        return (rms * 2.4).toFloat().coerceIn(0f, 1f)
+    }
+
+    private fun releaseVisualizer() {
+        visualizer?.let {
+            try {
+                it.enabled = false
+                it.release()
+            } catch (_: Exception) {
+                // Already released or invalid — nothing to clean up.
+            }
+        }
+        visualizer = null
     }
 
     /** Runs [work] on a background thread, then delivers the result on the main thread. */
@@ -238,6 +383,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        releaseVisualizer()
         mediaPlayer?.release()
         mediaPlayer = null
         super.onDestroy()

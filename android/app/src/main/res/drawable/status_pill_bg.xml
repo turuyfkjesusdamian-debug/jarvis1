@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Matches styles.css .status-pill (rgba(88,28,135,0.25) fill, panel-border outline, fully rounded). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#40581C87" />
+    <stroke android:width="1dp" android:color="#2c1a54" />
+    <corners android:radius="999dp" />
+</shape>

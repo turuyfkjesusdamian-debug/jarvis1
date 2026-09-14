@@ -1,162 +1,165 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Mirrors app/public/index.html + styles.css's layout (topbar with status
+     pills, a centered orb, a scrolling conversation, a bottom input row) so
+     the Android app looks like the web one — see JARVIS/ARCHITECTURE.md §
+     Decisions. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#060310"
-    android:fillViewport="true">
+    android:background="@drawable/bg_gradient"
+    android:orientation="vertical">
 
+    <!-- Top bar: brand + status pills, matching .topbar / .brand / .status-pill -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="JARVIS"
+            android:textColor="#D8B4FE"
+            android:textStyle="bold"
+            android:textSize="16sp"
+            android:letterSpacing="0.3" />
+
+        <TextView
+            android:id="@+id/conn_status_pill"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/status_pill_bg"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:text="conexión: ?"
+            android:textColor="#9A8BC4"
+            android:textSize="10sp" />
+
+        <TextView
+            android:id="@+id/listen_status_pill"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/status_pill_bg"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:text="escucha: detenida"
+            android:textColor="#9A8BC4"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginHorizontal="16dp"
+        android:background="#A855F7"
+        android:alpha="0.35" />
+
+    <!-- Stage: orb + conversation, matching .stage / .orb-wrap / #conversation -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="8dp">
+
+        <com.jarvis.app.OrbView
+            android:id="@+id/orb_view"
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            android:layout_marginBottom="12dp" />
+
+        <ScrollView
+            android:id="@+id/conversation_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="#8C12092A"
+            android:padding="10dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/conversation_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/conversation_hint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Escribe un mensaje abajo, o di “oye jarvis” si activaste la escucha en segundo plano."
+                    android:textColor="#9A8BC4"
+                    android:textSize="12sp" />
+
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginHorizontal="16dp"
+        android:background="#A855F7"
+        android:alpha="0.35" />
+
+    <!-- Footer: chat input, listener toggle, collapsible settings — matching <footer> -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:padding="16dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="24dp"
-            android:text="JARVIS"
-            android:textColor="#EDE9FE"
-            android:textSize="28sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Servidor"
-            android:textColor="#9A8BC4"
-            android:textSize="13sp" />
-
-        <EditText
-            android:id="@+id/server_url_input"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="16dp"
-            android:autofillHints="url"
-            android:hint="https://tu-servidor.onrender.com"
-            android:inputType="textUri"
-            android:textColor="#EDE9FE"
-            android:textColorHint="#5a4d80" />
+            android:orientation="horizontal"
+            android:layout_marginBottom="8dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Contraseña"
-            android:textColor="#9A8BC4"
-            android:textSize="13sp" />
+            <EditText
+                android:id="@+id/chat_input"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/pill_input_bg"
+                android:hint="Escribe un mensaje…"
+                android:inputType="text"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="10dp"
+                android:textColor="#EDE9FE"
+                android:textColorHint="#5a4d80" />
 
-        <EditText
-            android:id="@+id/password_input"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="16dp"
-            android:autofillHints="password"
-            android:hint="Contraseña de JARVIS"
-            android:inputType="textPassword"
-            android:textColor="#EDE9FE"
-            android:textColorHint="#5a4d80" />
-
-        <Button
-            android:id="@+id/login_button"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:backgroundTint="#A855F7"
-            android:text="Guardar e iniciar sesión"
-            android:textColor="#0B0517" />
-
-        <TextView
-            android:id="@+id/login_status"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
-            android:text="Sin conexión todavía."
-            android:textColor="#9A8BC4"
-            android:textSize="13sp" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginBottom="24dp"
-            android:background="#2c1a54" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Mensaje de prueba"
-            android:textColor="#9A8BC4"
-            android:textSize="13sp" />
-
-        <EditText
-            android:id="@+id/test_message_input"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="16dp"
-            android:hint="hola, ¿cómo estás?"
-            android:inputType="text"
-            android:textColor="#EDE9FE"
-            android:textColorHint="#5a4d80" />
-
-        <Button
-            android:id="@+id/send_test_button"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:backgroundTint="#A855F7"
-            android:text="Enviar mensaje de prueba"
-            android:textColor="#0B0517" />
-
-        <TextView
-            android:id="@+id/reply_text"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#12092A"
-            android:padding="16dp"
-            android:text="La respuesta de JARVIS va a aparecer aquí."
-            android:textColor="#EDE9FE" />
+            <Button
+                android:id="@+id/send_button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/pill_button_bg"
+                android:paddingHorizontal="20dp"
+                android:text="Enviar"
+                android:textColor="#0B0517" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/audio_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginBottom="12dp"
             android:text=""
             android:textColor="#9A8BC4"
-            android:textSize="13sp" />
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="24dp"
-            android:background="#2c1a54" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Escucha en segundo plano"
-            android:textColor="#9A8BC4"
-            android:textSize="13sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="12dp"
-            android:text="Di &#8220;oye jarvis&#8221; seguido de tu pregunta, con el celular desbloqueado."
-            android:textColor="#5a4d80"
             android:textSize="12sp" />
 
         <Button
             android:id="@+id/toggle_listener_button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="8dp"
-            android:backgroundTint="#A855F7"
+            android:layout_marginBottom="4dp"
+            android:background="@drawable/pill_button_bg"
             android:text="Activar escucha en segundo plano"
             android:textColor="#0B0517" />
 
@@ -164,9 +167,94 @@
             android:id="@+id/listener_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
             android:text="Detenida."
             android:textColor="#9A8BC4"
-            android:textSize="13sp" />
+            android:textSize="12sp"
+            android:gravity="center_horizontal" />
 
+        <TextView
+            android:id="@+id/details_toggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:background="@drawable/pill_button_secondary_bg"
+            android:paddingHorizontal="18dp"
+            android:paddingVertical="6dp"
+            android:text="Detalles ▾"
+            android:textColor="#9A8BC4"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:id="@+id/details_panel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="12dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Servidor"
+                android:textColor="#9A8BC4"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/server_url_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="12dp"
+                android:autofillHints="url"
+                android:background="@drawable/pill_input_bg"
+                android:hint="https://tu-servidor.onrender.com"
+                android:inputType="textUri"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="8dp"
+                android:textColor="#EDE9FE"
+                android:textColorHint="#5a4d80" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Contraseña"
+                android:textColor="#9A8BC4"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/password_input"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="12dp"
+                android:autofillHints="password"
+                android:background="@drawable/pill_input_bg"
+                android:hint="Contraseña de JARVIS"
+                android:inputType="textPassword"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="8dp"
+                android:textColor="#EDE9FE"
+                android:textColorHint="#5a4d80" />
+
+            <Button
+                android:id="@+id/login_button"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:background="@drawable/pill_button_bg"
+                android:text="Guardar e iniciar sesión"
+                android:textColor="#0B0517" />
+
+            <TextView
+                android:id="@+id/login_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                android:text="Sin conexión todavía."
+                android:textColor="#9A8BC4"
+                android:textSize="12sp" />
+
+        </LinearLayout>
     </LinearLayout>
-</ScrollView>
+</LinearLayout>
