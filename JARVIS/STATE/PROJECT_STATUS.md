@@ -130,19 +130,31 @@ see "What's missing" below.
   `/api/chat` + `/api/tts` pipeline — toggled from a button in
   `MainActivity`, which also prompts for the battery-optimization
   exemption and restarts itself after a reboot (`BootReceiver`) if it was
-  on. **Two on-device actions confirmed working live, both requiring an
-  explicit spoken "sí" first**: "envíale un mensaje a X que diga Y" (opens
-  WhatsApp with the message pre-filled — WhatsApp doesn't allow
-  third-party apps to send directly) and "llama a X" (places a real
-  call). Both resolve the contact and process the command entirely
-  on-device — see `JARVIS/SECURITY.md` § Android app actions and
-  `JARVIS/ARCHITECTURE.md` § Decisions. A bug where every confirmation
-  resolved to "Cancelado" regardless of what the user said (the mic was
-  hearing JARVIS's own spoken prompt as the answer) was found and fixed
-  the same day; also added "jarvis apágate" to stop the listener and
-  fully close the app, no confirmation needed.
+  on. **Four on-device actions added, all processed entirely on-device**
+  (never touching the server): "envíale un mensaje a X que diga Y" and
+  "llama a X" **require an explicit spoken "sí" first** (confirmed
+  working live, after fixing two real bugs found via live testing — a
+  self-hearing bug that made every confirmation resolve to "Cancelado"
+  regardless of what was said, and Android silently blocking a background
+  Service from actually opening WhatsApp/the dialer, fixed by launching
+  via a tap-to-open notification instead of directly); "reproduce/busca X
+  en YouTube" and "abre X" need **no confirmation** (opening an app or a
+  search page affects no one but the user) and use the same
+  notification-launch mechanism. "Jarvis apágate" stops the listener and
+  fully closes the app, also no confirmation needed. See
+  `JARVIS/SECURITY.md` § Android app actions and
+  `JARVIS/ARCHITECTURE.md` § Decisions for the full design and the
+  confirmation-vs-not distinction.
 
 ## What's missing / next steps
+
+- **"Abre X" and the YouTube search command need a real-device test** —
+  untested outside this environment, same constraint as every Android
+  feature so far. Needs confirming: the `<queries>` declaration actually
+  surfaces third-party apps (not just JARVIS itself) via
+  `queryIntentActivities`, common app names resolve correctly, and the
+  YouTube search-results page opens as expected via the tap-to-open
+  notification.
 - **An external uptime pinger needs to be pointed at `GET /healthz`** to
   stop Render's free tier from spinning the service down after 15 minutes
   idle — this is what caused the "sometimes instant, sometimes 30+

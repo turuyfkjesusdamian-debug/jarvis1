@@ -11,8 +11,8 @@ android {
         applicationId = "com.jarvis.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "0.3.2"
+        versionCode = 8
+        versionName = "0.4.0"
     }
 
     signingConfigs {

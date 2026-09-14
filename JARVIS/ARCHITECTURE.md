@@ -161,6 +161,25 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Added two more on-device commands: "reproduce/busca X
+  en YouTube" (opens YouTube's search-results page for X) and "abre X"
+  (opens any installed app matched by name). Unlike WhatsApp/calls,
+  neither requires a spoken confirmation — opening an app or a search
+  page has no effect on anyone but the user themselves, per
+  `JARVIS/SECURITY.md` § Android app actions' "no unnecessary
+  confirmation" principle stated there for exactly this distinction. Both
+  reuse `launchViaNotification` (same background-activity-start
+  restriction as WhatsApp/calls applies to opening any app). Deliberately
+  did *not* try to auto-play a specific YouTube video: doing that
+  reliably needs YouTube's Data API (a key to manage, quota limits, and
+  a real chance of "playing the wrong video" since search relevance is
+  a judgment call) — opening real search results with visible
+  thumbnails/titles for the user to pick from is more honest about what
+  can actually be automated here. Finding installed apps by name needed
+  a `<queries>` declaration in `AndroidManifest.xml` (Android 11+ hides
+  other installed apps by default unless declared) — the sanctioned
+  alternative to the heavily Play-Store-restricted `QUERY_ALL_PACKAGES`
+  permission.
 - **2026-09-14** — Fixed WhatsApp/calling silently doing nothing after a
   confirmed "sí" — JARVIS spoke "Listo, señor" but WhatsApp/the dialer
   never actually appeared, with no error surfaced. Root cause: Android

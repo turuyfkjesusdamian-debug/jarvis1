@@ -95,15 +95,27 @@ requires a valid session before responding.
   invalidates every previously issued session automatically, since old
   sessions were signed with the old password and will fail verification.
 
-## Android app actions (WhatsApp messages, phone calls)
+## Android app actions (WhatsApp, calls, apps, YouTube)
 
-The Android companion app (`android/`) can, on explicit voice command,
-open WhatsApp with a message pre-filled or place a real phone call — see
-`JARVIS/ARCHITECTURE.md` § Decisions. This is a second, independent place
-the "never infer confirmation" rule from Threat model #3 applies, with its
-own implementation (no `toolRouter`, no zod schema, no `"destructive"`
-tool tier — this is plain Kotlin in
-`JarvisListenerService.kt`), so it needs its own explicit rules:
+The Android companion app (`android/`) can, on voice command: prepare a
+WhatsApp message, place a real phone call, open any installed app by
+name, or open a YouTube search — see `JARVIS/ARCHITECTURE.md` §
+Decisions. This is a second, independent place security rules apply, with
+its own implementation (no `toolRouter`, no zod schema, no
+`"destructive"` tool tier — this is plain Kotlin in
+`JarvisListenerService.kt`), so it needs its own explicit rules.
+
+**Which actions need spoken confirmation, and why:** WhatsApp and calls
+do (they affect another person, or cost money/attention on someone
+else's end); opening an app or a YouTube search does not (nothing
+happens to anyone but the person who asked) — matching the same
+distinction `JARVIS/SECURITY.md`'s threat model draws for `app/`'s tools.
+Don't require confirmation for an action just because it's new; require
+it because the action has a real-world effect beyond the user's own
+phone.
+
+For WhatsApp and calls specifically, the "never infer confirmation" rule
+from Threat model #3 applies just as it does in `app/`:
 
 - **Every such action is spoken back in full and requires an explicit
   affirmative answer in the same interaction** ("¿Envío por WhatsApp a X,
@@ -125,11 +137,21 @@ tool tier — this is plain Kotlin in
   inside WhatsApp. Phone calls, by contrast, place immediately on
   confirmation (`Intent.ACTION_CALL`) — a real call, not a dialer preview
   — since Android does not have an equivalent restriction there.
-- If a *new* action of this kind is ever added (another app integration,
-  another destructive capability), it must follow the same pattern: full
-  spoken readback, explicit affirmative required, ambiguous treated as
-  "no". Do not add a capability that acts on an inferred or partial
-  confirmation.
+- **Opening an app or a YouTube search never asks for confirmation and
+  launches immediately** — consistent with the distinction above. Neither
+  reads or sends anything sensitive: the app list comes from
+  `PackageManager` (visible only via the `<queries>` declaration in
+  `AndroidManifest.xml`, not the broader `QUERY_ALL_PACKAGES`
+  permission), and a YouTube command only ever opens a *search-results*
+  page — never plays a specific video automatically — so the user always
+  sees what they're about to open before it does anything.
+- If a *new* action of this kind is ever added, decide which category it
+  falls into using the same test — does it affect anyone besides the user
+  making the request? If yes, it must follow the WhatsApp/calls pattern:
+  full spoken readback, explicit affirmative required, ambiguous treated
+  as "no". If no, it may launch immediately like opening an app, but
+  should still show the user what will happen (e.g. a search page, not a
+  blind auto-play) rather than guessing on their behalf.
 
 ## Reviewing changes
 

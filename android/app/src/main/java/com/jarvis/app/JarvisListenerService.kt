@@ -32,21 +32,27 @@ import java.util.Locale
  * Foreground service: listens continuously for "oye jarvis" and sends
  * whatever follows straight to the same /api/chat + /api/tts pipeline the
  * web UI and MainActivity's test button use — see
- * JARVIS/ARCHITECTURE.md § Decisions ("milestone 2"). Two commands are
- * special-cased and handled entirely on-device instead, never touching
- * the server: "envíale un mensaje a X que diga Y" (prepares WhatsApp with
- * the message pre-filled — WhatsApp itself doesn't allow a third-party
- * app to send it) and "llama a X" (a real phone call). Both require the
- * user to say an explicit "sí" to a spoken readback before anything
- * happens — see JARVIS/SECURITY.md § Actions requiring confirmation. On
- * confirmation, both are launched via a tap-to-open notification
+ * JARVIS/ARCHITECTURE.md § Decisions ("milestone 2"). A handful of
+ * commands are special-cased and handled entirely on-device instead,
+ * never touching the server:
+ * - "envíale un mensaje a X que diga Y" — prepares WhatsApp with the
+ *   message pre-filled (WhatsApp itself doesn't allow a third-party app
+ *   to send it) and "llama a X" — a real phone call. Both **require an
+ *   explicit spoken "sí"** to a full readback first — see
+ *   JARVIS/SECURITY.md § Actions requiring confirmation.
+ * - "reproduce/busca X en YouTube" (opens YouTube's search results for
+ *   X — the user still picks the actual video) and "abre X" (opens any
+ *   installed app matched by name). Neither needs confirmation: unlike
+ *   WhatsApp/calls, opening an app or a search page affects no one but
+ *   the user themselves.
+ * All four of the above launch via a tap-to-open notification
  * ([launchViaNotification]) rather than directly — Android silently
  * blocks a background Service from opening another app itself (API 29+),
- * with no exception to catch, so a direct `startActivity()` here looked
- * like it worked (spoke "Listo, señor") but WhatsApp/the dialer never
- * actually appeared. A third phrase, "jarvis apágate", stops the listener
- * and kills the app's own process outright — no confirmation needed,
- * since it only affects the person saying it.
+ * with no exception to catch, so a direct `startActivity()` call here
+ * looked like it worked but nothing actually appeared. A fifth phrase,
+ * "jarvis apágate", stops the listener and kills the app's own process
+ * outright — no confirmation needed, since it only affects the person
+ * saying it.
  *
  * Runs independently of MainActivity's lifecycle: it reads the server
  * URL/session straight from SharedPreferences rather than holding a
@@ -89,6 +95,13 @@ class JarvisListenerService : Service(), RecognitionListener {
         // "jarvis apágate" also matches inside "oye jarvis apágate" as a substring,
         // so both phrasings work without a separate wake-word check.
         private val SHUTDOWN_PHRASES = listOf("jarvis apagate", "jarvis apagar")
+        // Matches e.g. "reproduce despacito en youtube" / "busca gatos en youtube".
+        // Opens search results, not a specific video — see class doc comment.
+        private val YOUTUBE_REGEX = Regex("(?:reproduce|busca|pon)\\s+(.+?)\\s+en\\s+youtube")
+        // Matches e.g. "abre spotify" / "ábreme la app de whatsapp".
+        private val OPEN_APP_REGEX = Regex(
+            "abre(?:me)?\\s+(?:la\\s+app\\s+de\\s+|la\\s+aplicacion\\s+de\\s+|la\\s+app\\s+|la\\s+aplicacion\\s+)?(.+)"
+        )
 
         /** Read by MainActivity to reflect the real service state in the UI. */
         @Volatile
@@ -131,7 +144,12 @@ class JarvisListenerService : Service(), RecognitionListener {
         data class MissingPermission(val what: String) : CommandParseResult()
         data class ContactNotFound(val name: String) : CommandParseResult()
         data class MultipleContacts(val name: String, val count: Int) : CommandParseResult()
+        data class AppNotFound(val name: String) : CommandParseResult()
+        data class MultipleApps(val name: String, val count: Int) : CommandParseResult()
         data class Ready(val pending: PendingConfirmation) : CommandParseResult()
+        /** No confirmation needed — opening an app or a YouTube search has no
+         * effect on anyone but the user, unlike WhatsApp/calls. */
+        data class LaunchNow(val intent: Intent, val tapText: String, val spokenText: String) : CommandParseResult()
     }
 
     override fun onCreate() {
@@ -313,7 +331,9 @@ class JarvisListenerService : Service(), RecognitionListener {
 
         val parsed = tryParseWhatsAppCommand(command)
             .takeIf { it !is CommandParseResult.NotAMatch }
-            ?: tryParseCallCommand(command)
+            ?: tryParseCallCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
+            ?: tryParseYouTubeCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
+            ?: tryParseOpenAppCommand(command)
 
         when (parsed) {
             is CommandParseResult.Ready -> {
@@ -327,10 +347,18 @@ class JarvisListenerService : Service(), RecognitionListener {
                 }
                 speakLocally(prompt)
             }
+            is CommandParseResult.LaunchNow -> {
+                launchViaNotification(parsed.intent, parsed.tapText)
+                speakLocally(parsed.spokenText)
+            }
             is CommandParseResult.ContactNotFound ->
                 speakLocally("No encontré ningún contacto llamado ${parsed.name}, señor.")
             is CommandParseResult.MultipleContacts ->
                 speakLocally("Encontré ${parsed.count} contactos llamados ${parsed.name}, señor. Sea más específico.")
+            is CommandParseResult.AppNotFound ->
+                speakLocally("No encontré ninguna aplicación llamada ${parsed.name}, señor.")
+            is CommandParseResult.MultipleApps ->
+                speakLocally("Encontré ${parsed.count} aplicaciones parecidas a ${parsed.name}, señor. Sea más específico.")
             is CommandParseResult.MissingPermission ->
                 speakLocally("No tengo permiso de ${parsed.what}, señor. Actívelo en la app de JARVIS.")
             CommandParseResult.NotAMatch ->
@@ -397,6 +425,69 @@ class JarvisListenerService : Service(), RecognitionListener {
                 PendingConfirmation.PhoneCall(matches[0].first, digitsOnly(matches[0].second))
             )
         }
+    }
+
+    // --- "Reproduce/busca X en YouTube" / "Abre X" ---
+    // No confirmation needed for either — opening an app or a search page
+    // has no effect on anyone but the user, unlike WhatsApp/calls. Both
+    // still launch via a notification tap (see launchViaNotification):
+    // opening YouTube's actual search-results page shows the real title,
+    // channel, and thumbnail for each result, which the user picks from —
+    // this is more reliable and transparent than guessing a video ID via
+    // an unofficial API and playing it blind.
+
+    private fun tryParseYouTubeCommand(command: String): CommandParseResult {
+        val normalized = stripAccents(command.lowercase(Locale("es")))
+        val match = YOUTUBE_REGEX.find(normalized) ?: return CommandParseResult.NotAMatch
+        val queryRange = match.groups[1]?.range ?: return CommandParseResult.NotAMatch
+        val query = command.substring(queryRange.first, minOf(queryRange.last + 1, command.length)).trim()
+        if (query.isEmpty()) return CommandParseResult.NotAMatch
+
+        val encodedQuery = URLEncoder.encode(query, "UTF-8").replace("+", "%20")
+        val uri = Uri.parse("https://www.youtube.com/results?search_query=$encodedQuery")
+        val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return CommandParseResult.LaunchNow(
+            intent,
+            "Toque para ver \"$query\" en YouTube",
+            "Listo, señor. Toque la notificación para ver los resultados de $query en YouTube."
+        )
+    }
+
+    private fun tryParseOpenAppCommand(command: String): CommandParseResult {
+        val normalized = stripAccents(command.lowercase(Locale("es")))
+        val match = OPEN_APP_REGEX.find(normalized) ?: return CommandParseResult.NotAMatch
+        val nameRange = match.groups[1]?.range ?: return CommandParseResult.NotAMatch
+        val appName = command.substring(nameRange.first, minOf(nameRange.last + 1, command.length))
+            .trim().trimEnd('.', '!', '?')
+        if (appName.isEmpty()) return CommandParseResult.NotAMatch
+
+        val matches = findLaunchableApps(appName)
+        return when {
+            matches.isEmpty() -> CommandParseResult.AppNotFound(appName)
+            matches.size > 1 -> CommandParseResult.MultipleApps(appName, matches.size)
+            else -> {
+                val (label, intent) = matches[0]
+                CommandParseResult.LaunchNow(intent, "Toque para abrir $label", "Listo, señor. Toque la notificación para abrir $label.")
+            }
+        }
+    }
+
+    /** Returns (label, launchIntent) pairs for installed launchable apps whose
+     * name contains [name], accent/case-insensitive — requires the <queries>
+     * declaration in AndroidManifest.xml (Android 11+ package visibility). */
+    private fun findLaunchableApps(name: String): List<Pair<String, Intent>> {
+        val target = stripAccents(name.lowercase(Locale("es")))
+        val pm = packageManager
+        val mainIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return pm.queryIntentActivities(mainIntent, 0)
+            .mapNotNull { resolveInfo ->
+                val label = resolveInfo.loadLabel(pm).toString()
+                if (!stripAccents(label.lowercase(Locale("es"))).contains(target)) return@mapNotNull null
+                val launchIntent = pm.getLaunchIntentForPackage(resolveInfo.activityInfo.packageName)
+                    ?: return@mapNotNull null
+                label to launchIntent
+            }
+            .distinctBy { it.second.`package` }
     }
 
     /** Returns (displayName, number) pairs whose name contains [name], accent/case-insensitive. */
