@@ -12,11 +12,13 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.Process
 import android.provider.ContactsContract
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -37,7 +39,9 @@ import java.util.Locale
  * app to send it, only prepare it) and "llama a X" (places a real phone
  * call directly). Both require the user to say an explicit "sí" to a
  * spoken readback before anything happens — see JARVIS/SECURITY.md §
- * Actions requiring confirmation.
+ * Actions requiring confirmation. A third phrase, "jarvis apágate", stops
+ * the listener and kills the app's own process outright — no confirmation
+ * needed, since it only affects the person saying it.
  *
  * Runs independently of MainActivity's lifecycle: it reads the server
  * URL/session straight from SharedPreferences rather than holding a
@@ -75,6 +79,9 @@ class JarvisListenerService : Service(), RecognitionListener {
         private val CALL_REGEX = Regex("(?:llama(?:le)?|marca(?:le)?|haz una llamada)\\s+a\\s+(.+)")
         // Compared against the accent-stripped transcript, so "señor" here is "senor".
         private val AFFIRMATIVE_ANSWERS = setOf("si", "si senor", "confirmo", "correcto", "dale", "adelante", "afirmativo")
+        // "jarvis apágate" also matches inside "oye jarvis apágate" as a substring,
+        // so both phrasings work without a separate wake-word check.
+        private val SHUTDOWN_PHRASES = listOf("jarvis apagate", "jarvis apagar")
 
         /** Read by MainActivity to reflect the real service state in the UI. */
         @Volatile
@@ -90,6 +97,12 @@ class JarvisListenerService : Service(), RecognitionListener {
     private var awaitingFollowUp = false
     private var running = false
     private var pendingConfirmation: PendingConfirmation? = null
+    // While true, the recognizer stays off — otherwise the mic picks up
+    // JARVIS's own voice through the speaker as if it were the user
+    // answering, which made every yes/no confirmation resolve as neither
+    // and fall through to "Cancelado" regardless of what was actually said.
+    private var isSpeaking = false
+    private var onSpeechDone: (() -> Unit)? = null
 
     private val clearFollowUp = Runnable { awaitingFollowUp = false }
     private val clearPendingConfirmation = Runnable {
@@ -122,6 +135,16 @@ class JarvisListenerService : Service(), RecognitionListener {
         localTts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 localTts?.language = Locale("es", "ES")
+                localTts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {}
+                    override fun onDone(utteranceId: String?) {
+                        mainHandler.post { onLocalSpeechFinished() }
+                    }
+                    @Deprecated("Deprecated in Java, still the only overload some OEM TTS engines call")
+                    override fun onError(utteranceId: String?) {
+                        mainHandler.post { onLocalSpeechFinished() }
+                    }
+                })
             }
         }
         createNotificationChannel()
@@ -156,6 +179,22 @@ class JarvisListenerService : Service(), RecognitionListener {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // --- "Jarvis, apágate" ---
+
+    /** Stops the listener, clears the reboot-restart flag, and kills the app's
+     * own process outright — a literal "cierra por completo la app", not just
+     * "stop listening". No confirmation needed: unlike WhatsApp/calls this has
+     * no effect on anyone but the user themselves saying it. */
+    private fun shutdownCompletely() {
+        getSharedPreferences("jarvis", MODE_PRIVATE).edit().putBoolean("listener_enabled", false).apply()
+        stopListening()
+        speakLocally("Hasta luego, señor.") {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            Process.killProcess(Process.myPid())
+        }
+    }
+
     // --- Speech recognition loop ---
 
     private fun startListening() {
@@ -185,8 +224,18 @@ class JarvisListenerService : Service(), RecognitionListener {
     }
 
     private fun restartListening() {
-        if (!running) return
-        mainHandler.postDelayed({ if (running) startListening() }, RESTART_DELAY_MS)
+        if (!running || isSpeaking) return
+        mainHandler.postDelayed({ if (running && !isSpeaking) startListening() }, RESTART_DELAY_MS)
+    }
+
+    /** Called once JARVIS's own speech (local TTS) finishes — resumes listening and
+     * runs whatever was queued to happen after (see [speakLocally]'s `then` param). */
+    private fun onLocalSpeechFinished() {
+        isSpeaking = false
+        if (running) restartListening()
+        val callback = onSpeechDone
+        onSpeechDone = null
+        callback?.invoke()
     }
 
     override fun onResults(results: android.os.Bundle?) {
@@ -207,6 +256,19 @@ class JarvisListenerService : Service(), RecognitionListener {
     private fun handleTranscript(transcript: String?) {
         if (transcript.isNullOrBlank()) return
         Log.d(TAG, "Heard: $transcript")
+
+        // "Jarvis, apágate" always wins, even over a pending confirmation —
+        // an explicit shutdown request shouldn't get stuck behind an
+        // unrelated yes/no prompt.
+        val normalizedForShutdown = stripAccents(transcript.lowercase(Locale("es")))
+        if (SHUTDOWN_PHRASES.any { normalizedForShutdown.contains(it) }) {
+            mainHandler.removeCallbacks(clearFollowUp)
+            mainHandler.removeCallbacks(clearPendingConfirmation)
+            awaitingFollowUp = false
+            pendingConfirmation = null
+            shutdownCompletely()
+            return
+        }
 
         // A pending confirmation (WhatsApp message or phone call) takes
         // priority over everything else — the very next utterance must be
@@ -358,7 +420,7 @@ class JarvisListenerService : Service(), RecognitionListener {
     private fun handleConfirmation(transcript: String, pending: PendingConfirmation) {
         mainHandler.removeCallbacks(clearPendingConfirmation)
         pendingConfirmation = null
-        val normalized = stripAccents(transcript.lowercase(Locale("es"))).trim()
+        val normalized = stripAccents(transcript.lowercase(Locale("es"))).trim().trimEnd('.', '!', '?', ',')
         val isAffirmative = AFFIRMATIVE_ANSWERS.any { normalized == it || normalized.startsWith("$it ") || normalized.startsWith("$it,") }
         if (!isAffirmative) {
             // Anything that isn't a clear "yes" is treated as "no" — never
@@ -428,6 +490,9 @@ class JarvisListenerService : Service(), RecognitionListener {
     }
 
     private fun playAudio(bytes: ByteArray) {
+        // Same self-hearing problem as local TTS (see isSpeaking) — the mic
+        // must stay off while JARVIS's own reply plays through the speaker.
+        isSpeaking = true
         try {
             val file = File(cacheDir, "jarvis_wake_reply.mp3")
             FileOutputStream(file).use { it.write(bytes) }
@@ -435,16 +500,31 @@ class JarvisListenerService : Service(), RecognitionListener {
             mediaPlayer = android.media.MediaPlayer().apply {
                 setDataSource(file.absolutePath)
                 setOnPreparedListener { start() }
-                setOnCompletionListener { it.release() }
+                setOnCompletionListener {
+                    it.release()
+                    isSpeaking = false
+                    restartListening()
+                }
+                setOnErrorListener { _, _, _ ->
+                    isSpeaking = false
+                    restartListening()
+                    true
+                }
                 prepareAsync()
             }
         } catch (e: Exception) {
             Log.e(TAG, "playAudio failed", e)
+            isSpeaking = false
+            restartListening()
         }
     }
 
-    /** On-device TTS (no network) for short filler phrases and network-failure fallbacks. */
-    private fun speakLocally(text: String) {
+    /** On-device TTS (no network) for short filler phrases, confirmations, and
+     * network-failure fallbacks. Mutes the recognizer until speech finishes (see
+     * [isSpeaking]) — optionally running [then] once it does. */
+    private fun speakLocally(text: String, then: (() -> Unit)? = null) {
+        isSpeaking = true
+        onSpeechDone = then
         localTts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-local")
     }
 

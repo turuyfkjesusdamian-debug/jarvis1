@@ -161,6 +161,28 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Fixed the WhatsApp/call confirmation always resolving
+  to "no" regardless of what the user actually said, and added a "jarvis
+  apágate" shutdown command. Root cause: `SpeechRecognizer` restarted
+  listening immediately after speaking the confirmation prompt, so the
+  phone's own mic picked up JARVIS's spoken question through the speaker
+  as if it were the user's answer — which obviously never matches a
+  yes/no, so every confirmation fell through to "Cancelado" no matter
+  what was said afterward. Fixed with an `isSpeaking` flag that keeps the
+  recognizer off for the duration of both on-device `TextToSpeech` (via
+  `UtteranceProgressListener`'s `onDone`/`onError`) and ElevenLabs
+  `MediaPlayer` playback (via `onCompletion`/`onError`), resuming only
+  once JARVIS actually finishes talking. This bug affected any spoken
+  reply, not just confirmations, but was only *visible* on confirmations
+  since every other command tolerates a stray misheard utterance being
+  silently ignored (no wake word in it), while a confirmation treats
+  literally the next utterance as the answer. Also hardened confirmation
+  matching to strip trailing punctuation (`"sí."` didn't equal `"si"`).
+  Separately, added "jarvis apágate" (matches inside "oye jarvis apágate"
+  too, no separate wake-word check needed) — stops the listener, clears
+  the reboot-restart flag, and kills the app's own process outright, with
+  no confirmation needed since — unlike WhatsApp/calls — it only affects
+  the person saying it.
 - **2026-09-14** — Added two on-device Android capabilities, both gated on
   an explicit spoken confirmation: "envíale un mensaje a X que diga Y"
   (opens WhatsApp with the message pre-filled) and "llama a X" (places a
