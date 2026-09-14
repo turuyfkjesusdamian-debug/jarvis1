@@ -202,7 +202,13 @@ later without a rewrite:
     before adding the harder part (milestone 2: a foreground service doing
     continuous speech recognition for a wake word). The app reuses the
     exact same backend the web UI uses — no server-side changes were
-    needed, since CORS doesn't apply to native HTTP clients.
+    needed, since CORS doesn't apply to native HTTP clients. **Confirmed
+    working live end to end on the user's phone**: login, a chat
+    round-trip, and spoken playback of the reply all worked — the app's
+    error-surfacing (added specifically because the first test had audio
+    silently fail) correctly pinpointed the failure as the same
+    `ELEVENLABS_VOICE_ID` Voice-Library restriction described below,
+    which was a server config issue, not an app bug.
   - **Known risk flagged to the user up front**: the user's phone is
     Xiaomi/MIUI, which aggressively kills background services unless the
     user manually disables battery optimization and enables "autostart"

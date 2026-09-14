@@ -108,42 +108,46 @@ see "What's missing" below.
   `vitest.config.ts` forces
   `GEMINI_API_KEY`/`ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID`/`JARVIS_APP_PASSWORD`
   empty for every test run regardless of the local `app/.env`.
-- **Android companion app** (`android/`, milestone 1 of 2 — see
-  `JARVIS/ARCHITECTURE.md` § Decisions): a Kotlin app with a login screen
-  (server URL + `JARVIS_APP_PASSWORD`) and a "test message" button that
-  exercises `/api/auth/login` → `/api/chat` → `/api/tts` end to end,
-  reusing the exact same backend the web UI talks to. Built by
+- **Android companion app** (`android/`, milestone 1 of 2 confirmed
+  working on the user's real phone — see `JARVIS/ARCHITECTURE.md` §
+  Decisions): a Kotlin app with a login screen (server URL +
+  `JARVIS_APP_PASSWORD`) and a "test message" button that exercises
+  `/api/auth/login` → `/api/chat` → `/api/tts` end to end, reusing the
+  exact same backend the web UI talks to. Built by
   `.github/workflows/android-build.yml` on GitHub Actions (this sandbox
-  can't reach the Android SDK servers to build it directly) and handed to
-  the user as a sideloadable APK, signed with a committed keystore
-  (`android/jarvis-release.keystore`) so future updates install over the
-  old version. Not yet the actual voice-command feature — that's
-  milestone 2 (a foreground service doing continuous speech recognition
-  for a wake word), gated on confirming this milestone works on the
-  user's real phone first.
+  can't reach the Android SDK servers to build it directly) and published
+  to a GitHub Release (`android-latest`) since Actions artifacts are also
+  unreachable from this sandbox (Azure Blob Storage); handed to the user
+  as a sideloadable APK, signed with a committed keystore
+  (`android/jarvis-release.keystore`) so updates install over the old
+  version. Login, chat, and speech playback all verified live by the user
+  — text and audio both work correctly from the native app. Not yet the
+  actual voice-command feature — that's milestone 2 (a foreground service
+  doing continuous speech recognition for a wake word).
 
 ## What's missing / next steps
 
-- **Android app milestone 1 needs a real-device test.** The CI build
-  (GitHub Actions) needs to be confirmed producing an installable APK
-  (unverified — first push not yet run through CI as of this writing),
-  then the user needs to sideload it, log in, and confirm the test
-  message round-trips through chat + speech synthesis correctly. Only
-  after that should milestone 2 (the background wake-word listener,
-  including the Xiaomi/MIUI battery-optimization dance) be attempted.
+- **Android app milestone 2 (background wake-word listener) not started
+  yet.** Milestone 1 is fully confirmed working (login, chat, and speech
+  playback all verified live on the user's phone) — next is a foreground
+  service doing continuous speech recognition for a wake word, plus
+  walking the user through the Xiaomi/MIUI battery-optimization /
+  autostart settings that background services need to survive there.
 - **Render's environment variables need `JARVIS_APP_PASSWORD` added** for
   the new password gate to actually activate (`jarvis-12lx.onrender.com`
   currently has none set, so the app is still open to anyone with the
   link). The user needs to pick a password, add it on Render, redeploy,
   then log in once on their phone — the session persists for a year.
-- **Gemini and the deterministic tool flows are confirmed working live on
-  Render** — the user tested "hola cómo estás" and "¿qué tengo hoy?" and
-  both worked as expected against the real deployment. **ElevenLabs speech
-  output failed live** with `402 paid_plan_required` because the chosen
-  voice was browsed from ElevenLabs' shared Voice Library, not a premade
-  voice in the account (see `JARVIS/ARCHITECTURE.md` § Decisions) — fixed
-  by switching `ELEVENLABS_VOICE_ID` to a premade voice id; needs a
-  live re-test on Render to confirm speech output now works end to end.
+- **Gemini, the deterministic tool flows, and ElevenLabs speech output are
+  all confirmed working live on Render** — the user tested "hola cómo
+  estás?" and "¿qué tengo hoy?" (Gemini + tools), and, after switching
+  `ELEVENLABS_VOICE_ID` to a premade voice id (a Voice-Library voice
+  returns `402 paid_plan_required` on ElevenLabs' Free plan — see
+  `JARVIS/ARCHITECTURE.md` § Decisions), confirmed hearing a real spoken
+  reply from the Android app. The user's original chosen voice can be
+  restored later if they upgrade their ElevenLabs plan, or a self-cloned
+  voice turns out to work on the Free plan — just swap
+  `ELEVENLABS_VOICE_ID` again, no code change needed either way.
 - **The browser Web Speech API voice loop was exercised once live on
   Render and worked** (the user spoke into the mic and got a correct
   transcription + reply), but reliability across repeated use on the
