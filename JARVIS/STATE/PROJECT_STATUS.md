@@ -1,7 +1,7 @@
 ---
 type: state
 scope: project-status
-updated: 2026-09-13
+updated: 2026-09-14
 ---
 
 # Project status
@@ -21,7 +21,7 @@ belongs to; and — in progress — a native Android companion app (`android/`)
 was started for a voice command that works without opening the web app
 first (see `JARVIS/ARCHITECTURE.md` § Decisions for the full rationale on
 each, including why this sandbox can't build it directly and builds it via
-GitHub Actions instead). 112/112 web-app tests pass (`cd app && npm test`),
+GitHub Actions instead). 127/127 web-app tests pass (`cd app && npm test`),
 `npm run typecheck` and `npm run build` are clean. The Android app has no
 automated tests yet — it can't be exercised in this environment at all;
 see "What's missing" below.
@@ -39,13 +39,18 @@ see "What's missing" below.
   (path-traversal-safe read/write/append, section extraction), `retrieval`
   (folder/tag/frontmatter/keyword scoring, no vector DB — see
   `JARVIS/ARCHITECTURE.md` § Retrieval strategy for why).
-- **Memory engine** (`app/src/memory/`): session (volatile, in-process),
-  short-term (`JARVIS/STATE/current-day.md`, date-based rotation),
-  permanent (`JARVIS/MEMORY/*.md`, one bullet per fact) behind
-  `MemoryEngine`, plus the `shouldPersist` heuristic (conservative:
-  explicit "remember" > stable preference > project/people mention >
-  nothing; skips questions so "¿qué recuerdas sobre el proyecto?" doesn't
-  get saved as if it were a fact).
+- **Memory engine** (`app/src/memory/`): session (in-process, capped at 40
+  turns, now persisted as JSON to `JARVIS/STATE/session-history.json` and
+  reloaded on startup so a Render cold start no longer wipes the
+  conversation — see `JARVIS/MEMORY.md` § 1), short-term
+  (`JARVIS/STATE/current-day.md`, date-based rotation), permanent
+  (`JARVIS/MEMORY/*.md`, one bullet per fact) behind `MemoryEngine`, plus
+  the `shouldPersist` heuristic (conservative: explicit "remember" >
+  stable preference > project/people mention > nothing; skips questions
+  so "¿qué recuerdas sobre el proyecto?" doesn't get saved as if it were
+  a fact). Saying "olvida X" now actually forgets it, via a two-turn
+  confirm-then-act flow in `JarvisCore` (reads the matching fact back,
+  waits for an explicit "sí") — see `JARVIS/MEMORY.md` § Forgetting.
 - **Tools** (`app/src/tools/`): full set from `JARVIS/TOOLS.md` —
   `obsidian.{searchNotes,readNote,createNote,updateNote,appendToNote}`,
   `tasks.{listTasks,createTask,completeTask,updateTask}`,
@@ -94,17 +99,21 @@ see "What's missing" below.
   `public/icons/`) — "Add to Home Screen" gives it its own icon and a
   full-screen, no-address-bar window. `login.html` is the gate page shown
   when `JARVIS_APP_PASSWORD` is set and no valid session exists yet.
-- **Tests** (`app/tests/`, 112 tests / 18 files): indexer, retrieval,
+- **Tests** (`app/tests/`, 127 tests / 20 files): indexer, retrieval,
   reader (incl. path-traversal rejection), both memory tiers + the
-  persistence heuristic (incl. the question-vs-statement fix), every tool
-  group, the registry's validation/permission/confirmation logic, intent
-  classification (incl. recall questions), an end-to-end `JarvisCore`
-  flow (including a test that a note containing "ignore all previous
-  instructions" is treated as inert data, per `JARVIS/SECURITY.md`, and
-  tests for the conversational-reply path with/without a key and on
-  failure), the Gemini + ElevenLabs clients with `fetch` mocked (no
-  network, no real API key needed), and the auth gate's session
-  signing/verification logic (`tests/server/auth.test.ts`) —
+  persistence heuristic (incl. the question-vs-statement fix), the
+  forget-command parser and its confirm-then-act flow (asks before
+  deleting, cancels on anything but "sí", never lets the forgotten text
+  get re-persisted via `shouldPersist`), session history surviving a new
+  `JarvisCore` instance, every tool group, the registry's
+  validation/permission/confirmation logic, intent classification (incl.
+  recall questions), an end-to-end `JarvisCore` flow (including a test
+  that a note containing "ignore all previous instructions" is treated as
+  inert data, per `JARVIS/SECURITY.md`, and tests for the
+  conversational-reply path with/without a key and on failure), the
+  Gemini + ElevenLabs clients with `fetch` mocked (no network, no real API
+  key needed), and the auth gate's session signing/verification logic
+  (`tests/server/auth.test.ts`) —
   `vitest.config.ts` forces
   `GEMINI_API_KEY`/`ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID`/`JARVIS_APP_PASSWORD`
   empty for every test run regardless of the local `app/.env`.

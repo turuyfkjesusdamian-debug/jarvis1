@@ -9,6 +9,8 @@ import { ToolRouter } from "./toolRouter.js";
 import { classifyIntent, type Intent } from "./intent.js";
 import { gatherContext } from "./contextBuilder.js";
 import { composeReply } from "./respond.js";
+import { parseForgetCommand, isAffirmative } from "./forgetCommand.js";
+import type { MemoryCategory } from "../memory/permanentMemory.js";
 import { PERSONA_SYSTEM_PROMPT } from "./persona.js";
 import { logger } from "../logging/logger.js";
 import type { ToolCallOutcome } from "./toolRouter.js";
@@ -44,6 +46,13 @@ export class JarvisCore {
   private readonly indexFilePath: string;
   private cachedIndex: VaultIndex | undefined;
   private readonly toolRouter: ToolRouter;
+  /**
+   * Set while waiting for the user's yes/no reply to a pending "olvida X"
+   * command (see handleTextMessage). Single-user, single-process app (see
+   * JARVIS/SECURITY.md § Access control), so in-memory state is enough —
+   * no session id needed to know whose confirmation this is.
+   */
+  private pendingForget: { category: MemoryCategory; textMatch: string } | undefined;
 
   constructor(vaultPath: string) {
     this.vaultReader = new VaultReader(vaultPath);
@@ -64,6 +73,7 @@ export class JarvisCore {
   /** Loads the on-disk index if present, otherwise builds and persists a fresh one. */
   async init(): Promise<void> {
     await this.memory.shortTerm.ensureFresh();
+    await this.memory.loadPersistedSession();
     const existing = await this.indexer.readIndex(this.indexFilePath);
     this.cachedIndex = existing ?? (await this.indexer.reindex(this.indexFilePath));
     logger.info("JarvisCore initialized", { files: this.cachedIndex.files.length });
@@ -97,6 +107,15 @@ export class JarvisCore {
    * otherwise or if the call fails — see voice/geminiClient.ts.
    */
   async handleTextMessage(utterance: string): Promise<HandleMessageResult> {
+    if (this.pendingForget) {
+      return this.resolvePendingForget(utterance);
+    }
+
+    const forgetTarget = parseForgetCommand(utterance);
+    if (forgetTarget) {
+      return this.beginForgetFlow(utterance, forgetTarget);
+    }
+
     const justPersisted = await this.memory.recordUtterance(utterance);
     const intent = classifyIntent(utterance);
     const toolCalls = await gatherContext(intent, utterance, this.toolRouter);
@@ -104,6 +123,61 @@ export class JarvisCore {
     this.memory.session.addTurn({ role: "assistant", content: reply });
     await this.memory.flushSessionToDisk();
     return { intent, reply, toolCalls, debugError };
+  }
+
+  /**
+   * "olvida X" is a destructive request (memory.forgetMemory), so it must
+   * go through the same explicit-confirmation rule as any other destructive
+   * tool (JARVIS/SECURITY.md § Confirm destructive actions) — it's routed
+   * here instead of through classifyIntent/gatherContext so the text being
+   * forgotten never gets run through shouldPersist and accidentally
+   * re-saved (e.g. "olvida que tengo un proyecto con Juan" mentions
+   * "proyecto", which would otherwise trip the project-mention heuristic).
+   */
+  private async beginForgetFlow(utterance: string, textMatch: string): Promise<HandleMessageResult> {
+    this.memory.session.addTurn({ role: "user", content: utterance });
+
+    const matches = await this.memory.permanent.findMatches(textMatch);
+    let reply: string;
+    if (matches.length === 0) {
+      reply = `No encuentro nada guardado que coincida con "${textMatch}", señor.`;
+    } else if (matches.length > 1) {
+      const preview = matches.slice(0, 3).map((f) => `"${f.text}"`).join("; ");
+      reply = `Encontré varias coincidencias, señor: ${preview}. Sea más específico, por favor.`;
+    } else {
+      const fact = matches[0]!;
+      this.pendingForget = { category: fact.category, textMatch: fact.text };
+      reply = `¿Confirmo que debo olvidar esto, señor?: "${fact.text}". Diga sí o no.`;
+    }
+
+    this.memory.session.addTurn({ role: "assistant", content: reply });
+    await this.memory.flushSessionToDisk();
+    return { intent: "memory", reply, toolCalls: [] };
+  }
+
+  /** Anything other than a clear "sí" is treated as "no" — same rule as android's WhatsApp/call confirmations. */
+  private async resolvePendingForget(utterance: string): Promise<HandleMessageResult> {
+    const pending = this.pendingForget!;
+    this.pendingForget = undefined;
+    this.memory.session.addTurn({ role: "user", content: utterance });
+
+    let reply: string;
+    let toolCalls: ToolCallOutcome[] = [];
+    if (isAffirmative(utterance)) {
+      const outcome = await this.toolRouter.call({
+        name: "memory.forgetMemory",
+        params: { category: pending.category, textMatch: pending.textMatch },
+        confirmed: true,
+      });
+      toolCalls = [outcome];
+      reply = outcome.result.ok ? "Hecho, señor. Lo he olvidado." : "Me temo que no he podido olvidarlo, señor.";
+    } else {
+      reply = "Entendido, no he olvidado nada, señor.";
+    }
+
+    this.memory.session.addTurn({ role: "assistant", content: reply });
+    await this.memory.flushSessionToDisk();
+    return { intent: "memory", reply, toolCalls };
   }
 
   private async composeReplyForIntent(

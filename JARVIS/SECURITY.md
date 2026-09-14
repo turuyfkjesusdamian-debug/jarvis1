@@ -43,7 +43,14 @@ hard constraints for any change.
   explicit `confirmed: true` flag that only `core` sets, and only after
   surfacing the action to the user and receiving affirmative input in
   that same turn. A model deciding on its own that something is
-  "obviously fine" to delete does not count as confirmation.
+  "obviously fine" to delete does not count as confirmation. Since a
+  single "turn" in the web/text chat spans two separate HTTP requests
+  (the request that proposes the action, and the one carrying the user's
+  yes/no), `JarvisCore` holds a single in-memory `pendingForget` slot
+  across those two calls — see `JARVIS/MEMORY.md` § Forgetting for the
+  concrete example (`memory.forgetMemory`). Anything other than a clear
+  affirmative in that second request is treated as "no", same as the
+  Android confirmation flow below.
 - **No arbitrary code/shell execution is ever exposed to the model.**
   There is no "runCommand" tool and there must never be one added without
   a full re-review of this document.

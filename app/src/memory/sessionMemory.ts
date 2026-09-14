@@ -33,6 +33,16 @@ export class SessionMemory {
     this.turns = [];
   }
 
+  /** Replaces the in-memory turns with previously persisted ones (see MemoryEngine.loadPersistedSession). */
+  restore(turns: SessionTurn[]): void {
+    this.turns = turns.slice(-this.maxTurns);
+  }
+
+  /** Plain-data snapshot for persistence — see MemoryEngine.flushSessionToDisk. */
+  toJSON(): SessionTurn[] {
+    return this.turns;
+  }
+
   renderForFile(): string {
     if (this.turns.length === 0) return "No active session.";
     return this.turns

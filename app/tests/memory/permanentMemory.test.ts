@@ -68,4 +68,26 @@ describe("PermanentMemory", () => {
 
     expect(await memory.forget("people", "Nobody")).toBe(false);
   });
+
+  it("findMatches searches across categories case-insensitively", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const memory = new PermanentMemory(new VaultReader(vault.vaultPath));
+
+    await memory.save({ category: "people", date: "2026-09-13", text: "Ada is a colleague." });
+    const results = await memory.findMatches("ADA");
+    expect(results.some((f) => f.text.includes("Ada"))).toBe(true);
+  });
+
+  it("findMatches returns every fact containing the substring, not just the first", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const memory = new PermanentMemory(new VaultReader(vault.vaultPath));
+
+    await memory.save({ category: "people", date: "2026-09-13", text: "Ada likes coffee." });
+    await memory.save({ category: "projects", date: "2026-09-13", text: "Ada is on the Apollo project." });
+
+    const results = await memory.findMatches("Ada");
+    expect(results).toHaveLength(2);
+  });
 });

@@ -4,16 +4,24 @@ JARVIS uses three memory tiers, from most volatile to most durable. The
 guiding rule: **write as little as possible, persist only what's worth
 remembering.**
 
-## 1. Session memory (volatile)
+## 1. Session memory (volatile, but survives a restart)
 
 - **Lives**: in the running process (`app/src/memory/sessionMemory.ts`),
   an in-memory ring buffer of the current conversation (recent turns,
-  last tool calls/results, working topic).
-- **Persisted**: no, by default. Lost on restart.
-- **Written to disk only** for crash-recovery/debugging as
-  `JARVIS/STATE/current-session.md`, overwritten each turn (not appended),
-  and treated as disposable — it is not read back as a source of truth,
-  only inspectable.
+  last tool calls/results, working topic; capped at 40 turns).
+- **Persisted**: yes, as a plain JSON snapshot at
+  `JARVIS/STATE/session-history.json`, rewritten on every turn
+  (`MemoryEngine.flushSessionToDisk`) and reloaded on the next process
+  startup (`MemoryEngine.loadPersistedSession`, called from
+  `JarvisCore.init`). This exists specifically because Render's free tier
+  spins the process down after ~15 minutes idle — without this, JARVIS
+  would "forget" the conversation every time it cold-starts. It is still
+  not a source of truth for facts (that's tier 3) — it's just enough
+  recent context (used as chat history for general-intent replies, see
+  `JarvisCore.composeReplyForIntent`) to feel continuous across restarts.
+- **Also written**, in parallel, as a human-readable copy at
+  `JARVIS/STATE/current-session.md` (overwritten each turn) purely for
+  inspection/debugging — that file is never read back.
 
 ## 2. Short-term memory (daily)
 
@@ -80,6 +88,33 @@ intent (e.g. a scheduling question rarely needs `people.md`).
 
 ## Forgetting
 
-`memory/forgetMemory` removes a specific bullet (matched by search) from
-the relevant file. Forgetting is not automatic — it is a tool the user (or
-a very high-confidence explicit correction) invokes.
+Saying "olvida X" (or "olvídate de X" / "olvida que X") triggers a
+confirm-then-act flow in `core/JarvisCore.ts`, handled before intent
+classification even runs:
+
+1. `parseForgetCommand` (`app/src/core/forgetCommand.ts`) recognizes the
+   instruction and extracts the target text. It deliberately does **not**
+   share a pattern with "no olvides X" (which means the opposite —
+   remember, handled by `shouldPersist.ts`) — the two are unrelated verb
+   forms ("olvida" vs "olvides"), so there is no ambiguity to resolve.
+2. `PermanentMemory.findMatches` searches every category for the target
+   text. Zero matches → JARVIS says so and nothing else happens. More than
+   one match → JARVIS lists them and asks the user to be more specific,
+   without guessing which one they meant.
+3. Exactly one match → JARVIS reads the fact back in full and asks "¿Confirmo
+   que debo olvidar esto, señor?" — mirroring the same "read it back, wait
+   for an explicit answer" rule `JARVIS/SECURITY.md` requires for any
+   destructive action, and matching the pattern already used by the
+   Android app's WhatsApp/call confirmations.
+4. The next message is checked for a clear "sí" (`isAffirmative`); anything
+   else — "no", silence-equivalent, an unrelated reply — is treated as "no"
+   and cancels. Only on a clear "sí" does `core` call `memory.forgetMemory`
+   with `confirmed: true`, going through the same `toolRouter` destructive-
+   permission check as every other tool.
+
+This state (`pendingForget` on `JarvisCore`) is in-memory only and
+single-slot — fine for a single-user app with one conversation at a time
+(see `JARVIS/SECURITY.md` § Access control). The text being forgotten is
+never run through `shouldPersist`, so a forget command can't accidentally
+re-save itself as a new fact just because it mentions a project/person/
+preference keyword.

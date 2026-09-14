@@ -6,6 +6,7 @@ import { PermanentMemory, type MemoryCategory, type MemoryFact } from "./permane
 import { shouldPersist } from "./shouldPersist.js";
 
 const SESSION_FILE_PATH = "JARVIS/STATE/current-session.md";
+const SESSION_HISTORY_PATH = "JARVIS/STATE/session-history.json";
 
 /** Facade over the three memory tiers (see JARVIS/MEMORY.md). */
 export class MemoryEngine {
@@ -21,12 +22,31 @@ export class MemoryEngine {
     this.permanent = new PermanentMemory(reader);
   }
 
-  /** Mirrors the in-memory session to disk for inspection/debugging (disposable). */
+  /**
+   * Mirrors the in-memory session to disk: a human-readable copy for
+   * inspection/debugging, and a JSON copy that `loadPersistedSession`
+   * reloads on the next startup. Render's free tier spins the process down
+   * after 15 minutes idle, which would otherwise wipe the conversation the
+   * user was just having — this makes recent turns survive that restart.
+   */
   async flushSessionToDisk(): Promise<void> {
     await this.reader.writeNote(SESSION_FILE_PATH, `# Current session\n\n${this.session.renderForFile()}\n`, {
       type: "state",
       scope: "session",
     });
+    await this.reader.writeNote(SESSION_HISTORY_PATH, JSON.stringify(this.session.toJSON()));
+  }
+
+  /** Reloads the conversation history saved by a previous process, if any. Never throws — a corrupt/missing file just starts fresh. */
+  async loadPersistedSession(): Promise<void> {
+    if (!(await this.reader.exists(SESSION_HISTORY_PATH))) return;
+    try {
+      const note = await this.reader.readNote(SESSION_HISTORY_PATH);
+      const turns = JSON.parse(note.content);
+      if (Array.isArray(turns)) this.session.restore(turns);
+    } catch (err) {
+      logger.warn("Failed to load persisted session history, starting fresh", { error: String(err) });
+    }
   }
 
   /**

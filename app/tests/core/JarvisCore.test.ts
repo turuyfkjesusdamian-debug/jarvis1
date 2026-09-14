@@ -168,6 +168,82 @@ describe("JarvisCore", () => {
     }
   });
 
+  it("asks for confirmation before forgetting a fact, and does nothing until confirmed", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const core = new JarvisCore(vault.vaultPath);
+    await core.init();
+
+    await core.handleTextMessage("Remember that Ada is a colleague.");
+    const before = await core.memory.permanent.listAll();
+
+    const asked = await core.handleTextMessage("olvida que Ada is a colleague");
+    expect(asked.intent).toBe("memory");
+    expect(asked.reply).toMatch(/confirmo/i);
+    expect(asked.reply).toMatch(/Ada/);
+
+    const after = await core.memory.permanent.listAll();
+    expect(after).toHaveLength(before.length); // nothing removed yet
+  });
+
+  it("forgets the fact once the user confirms with sí", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const core = new JarvisCore(vault.vaultPath);
+    await core.init();
+
+    await core.handleTextMessage("Remember that Ada is a colleague.");
+    await core.handleTextMessage("olvida que Ada is a colleague");
+    const result = await core.handleTextMessage("sí");
+
+    expect(result.reply).toMatch(/olvidado/i);
+    const facts = await core.memory.permanent.listAll();
+    expect(facts.some((f) => f.text.includes("Ada"))).toBe(false);
+  });
+
+  it("cancels the forget request on anything other than a clear sí", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const core = new JarvisCore(vault.vaultPath);
+    await core.init();
+
+    await core.handleTextMessage("Remember that Ada is a colleague.");
+    await core.handleTextMessage("olvida que Ada is a colleague");
+    const result = await core.handleTextMessage("no");
+
+    expect(result.reply).toMatch(/cancel|no he olvidado/i);
+    const facts = await core.memory.permanent.listAll();
+    expect(facts.some((f) => f.text.includes("Ada"))).toBe(true);
+  });
+
+  it("does not let the text being forgotten get re-persisted via shouldPersist", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const core = new JarvisCore(vault.vaultPath);
+    await core.init();
+
+    // Mentions "proyecto", which would otherwise trip the project-mention heuristic.
+    const before = await core.memory.permanent.listAll();
+    await core.handleTextMessage("olvida que tengo un proyecto con Juan");
+    const after = await core.memory.permanent.listAll();
+    expect(after).toHaveLength(before.length);
+  });
+
+  it("remembers the conversation across a restart (new JarvisCore instance)", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+
+    const core1 = new JarvisCore(vault.vaultPath);
+    await core1.init();
+    await core1.handleTextMessage("hola cómo estás");
+
+    const core2 = new JarvisCore(vault.vaultPath);
+    await core2.init();
+
+    const recent = core2.memory.session.getRecent(10);
+    expect(recent.some((t) => t.content === "hola cómo estás")).toBe(true);
+  });
+
   it("reindexes after a mutating tool call so subsequent reads see the change", async () => {
     const vault = await createTempVault();
     cleanup = vault.cleanup;

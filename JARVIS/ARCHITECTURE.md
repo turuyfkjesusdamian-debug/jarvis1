@@ -161,6 +161,28 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Added conversational memory: (1) session memory now
+  survives a process restart — persisted as JSON to
+  `JARVIS/STATE/session-history.json` on every turn and reloaded in
+  `JarvisCore.init`, so Render's free-tier cold starts (see § 6 below, and
+  the `/healthz` decision) no longer wipe the conversation the user was
+  just having; (2) "olvida X" now actually forgets, via a two-turn
+  confirm-then-act flow in `JarvisCore.handleTextMessage` (a `pendingForget`
+  slot held in memory across the two HTTP requests), mirroring the
+  Android app's WhatsApp/call confirmation pattern for the same reason:
+  `memory.forgetMemory` is a `"destructive"` tool and `JARVIS/SECURITY.md`
+  requires explicit same-turn confirmation before any destructive tool
+  runs. Deliberately kept the forget-target detection
+  (`core/forgetCommand.ts`) as a check *before* intent classification,
+  not inside it — running the target text through `shouldPersist` (the
+  save heuristic) would risk re-saving it as a new fact just because it
+  happens to mention a project/person/preference keyword (e.g. "olvida
+  que tengo un proyecto con Juan" contains "proyecto"). Did not build a
+  separate long-term "conversation log" beyond the existing session
+  buffer (capped at 40 turns) — that already covers "remembers the
+  conversation" for the cold-start case this was meant to fix, and
+  permanent memory already exists for facts meant to outlive any single
+  conversation.
 - **2026-09-14** — Simplified "abre X" / "abre X y reproduce Y" to their
   literal forms only (dropped "ábreme"/"la app de X"/"busca"/"pon"
   synonyms), per the user's explicit request. Also found and fixed a real

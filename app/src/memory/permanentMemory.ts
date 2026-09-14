@@ -103,6 +103,18 @@ export class PermanentMemory {
     return scored.map((s) => s.fact);
   }
 
+  /**
+   * Case-insensitive substring search across every category, used to
+   * preview what a forget command would remove before asking for
+   * confirmation (unlike `search`, no OR-of-words scoring — a forget
+   * target should be a specific phrase, not a loose keyword match).
+   */
+  async findMatches(textMatch: string): Promise<MemoryFact[]> {
+    const all = await this.listAll();
+    const needle = textMatch.toLowerCase();
+    return all.filter((f) => f.text.toLowerCase().includes(needle));
+  }
+
   /** Removes the first fact whose text matches (case-insensitive substring). Returns true if removed. */
   async forget(category: MemoryCategory, textMatch: string): Promise<boolean> {
     const relPath = pathFor(category);
