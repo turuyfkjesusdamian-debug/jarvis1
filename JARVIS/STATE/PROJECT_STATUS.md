@@ -189,14 +189,13 @@ see "What's missing" below.
   notification if that permission was never granted. JARVIS never draws
   anything visible with this permission. See `JARVIS/SECURITY.md` §
   Android app actions and `JARVIS/ARCHITECTURE.md` § Decisions.
-- **Orb tuned bigger/denser (now settled back to a fixed 220dp box), plus
-  three small UI additions and a diagnostics fix** — after a round where
-  the orb briefly went full-screen-width and the user asked for that
-  space back for the chat, the container is a fixed centered box again
-  (220dp, down from 260dp) while keeping the denser particles (~1.5x per
-  ring), bigger particle size, and bumped `baseRadius` (0.34→0.38) from
-  the same tuning pass (no device profiling behind any of these numbers
-  — first thing to dial back if a real phone drops frames).
+- **Orb size still being tuned live with the user — currently 280dp** —
+  went full-screen-width (too big), then 220dp (too small), now 280dp as
+  a middle ground not yet confirmed by the user. Keeps the denser
+  particles (~1.5x per ring), bigger particle size, and bumped
+  `baseRadius` (0.34→0.38) from the same tuning pass throughout (no
+  device profiling behind any of these numbers — first thing to dial back
+  if a real phone drops frames).
   `MainActivity` also gained: a "Comandos" button (a plain `AlertDialog`
   listing every voice command, deliberately separate from "Detalles"); a
   "Leer las respuestas de JARVIS en voz alta" switch inside "Detalles"
@@ -225,13 +224,14 @@ see "What's missing" below.
   `debugError` text from the app's new note next time it happens, and
   check Render's env vars / logs for `GEMINI_API_KEY` validity and
   quota.
-- **The orb — now back to a fixed 220dp box — needs a real-device look
-  after its third tuning pass**, same untested-outside-this-sandbox
-  caveat as every other Android UI change. Worth confirming
-  specifically: it now leaves clearly more room for the chat than the
-  briefly-shipped full-width version did, the corners of the square
-  still show background (expected — a round sphere can't reach a
-  square's corners, not a bug), ~540 particles/frame doesn't drop frames
+- **The orb's current 280dp size still needs the user's confirmation** —
+  after full-width (too big) and 220dp (too small), same
+  untested-outside-this-sandbox caveat as every other Android UI change.
+  Worth confirming specifically: 280dp actually reads as "bigger than
+  220dp but still leaves clear room for the chat" rather than needing a
+  fourth pass, the corners of the square still show background (expected
+  — a round sphere can't reach a square's corners, not a bug), ~540
+  particles/frame doesn't drop frames
   on the software-rendered buffer canvas, and the volume slider actually
   changes both the chat screen's and the background listener's voice.
 

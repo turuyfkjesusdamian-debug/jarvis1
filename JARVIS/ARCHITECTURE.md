@@ -187,6 +187,11 @@ later without a rewrite:
   pass after being seen live — there is no way to get this fully right
   without a real device in the loop, so treat any single tuning pass as
   provisional until the user confirms it, not as done.
+- **2026-09-14** — Third orb-size pass in the same day: 220dp turned out
+  too small once seen live (right after 260dp→edge-to-edge turned out too
+  big). Settled on 280dp as a middle ground — bigger than the small box,
+  well short of the full-width version. Confirms the note above: don't
+  treat any one of these numbers as final without the user seeing it.
 - **2026-09-14** — Two follow-ups after the user saw the previous orb
   resize on a real phone and pointed out its corners weren't filled:
   (1) `activity_main.xml`'s orb container is now a full-width square (an

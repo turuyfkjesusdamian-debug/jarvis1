@@ -69,12 +69,14 @@
         android:paddingTop="8dp">
 
         <!-- Back to a fixed, smaller box (was briefly full screen width) —
-             the user asked for more room for the chat below it. OrbView's
-             own baseRadius (see OrbView.kt) still fills this box well. -->
+             the user asked for more room for the chat below it, then found
+             220dp too small — 280dp is the middle ground between that and
+             the full-width version. OrbView's own baseRadius (see
+             OrbView.kt) still fills this box well. -->
         <com.jarvis.app.OrbView
             android:id="@+id/orb_view"
-            android:layout_width="220dp"
-            android:layout_height="220dp"
+            android:layout_width="280dp"
+            android:layout_height="280dp"
             android:layout_marginBottom="12dp" />
 
         <ScrollView
