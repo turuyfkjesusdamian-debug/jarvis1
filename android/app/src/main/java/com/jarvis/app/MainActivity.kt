@@ -18,8 +18,10 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import java.io.File
@@ -55,6 +57,49 @@ class MainActivity : AppCompatActivity() {
     private lateinit var detailsPanel: LinearLayout
     private lateinit var detailsToggle: TextView
 
+    companion object {
+        /**
+         * Kept here as plain user-facing text, not generated from the regexes
+         * in JarvisListenerService.kt — update both together when a command
+         * changes. See JARVIS/ARCHITECTURE.md § Decisions for the full list.
+         */
+        private const val COMMANDS_HELP_TEXT = """“Oye JARVIS” + tu pregunta o mensaje
+Habla con JARVIS normalmente — memoria, tareas, agenda, o charla general.
+
+“Oye JARVIS, envíale un mensaje a [nombre] que diga [mensaje]”
+Prepara un mensaje de WhatsApp. Pide confirmación antes de abrir WhatsApp.
+
+“Oye JARVIS, llama a [nombre]”
+Hace una llamada real. Pide confirmación antes de marcar.
+
+“Oye JARVIS, abre [app]”
+Abre cualquier app instalada por su nombre.
+
+“Oye JARVIS, abre [app] y reproduce [algo]”
+Abre la app y busca dentro (solo funciona de verdad en YouTube y Spotify).
+
+“Oye JARVIS, reproduce/busca [algo] en YouTube”
+Abre los resultados de esa búsqueda en YouTube.
+
+“Oye JARVIS, cómo llego a [lugar]”
+Abre la ruta en Google Maps desde tu ubicación actual.
+
+“Oye JARVIS, cómo llego de [lugar] a [lugar]”
+Abre la ruta entre esos dos puntos en Google Maps.
+
+“Oye JARVIS, busca [algo] cerca”
+Abre una búsqueda cercana a ti en Google Maps.
+
+“Oye JARVIS, recuérdame que…”
+Guarda ese dato en la memoria permanente de JARVIS.
+
+“Oye JARVIS, olvida que…”
+Busca ese dato guardado y pide confirmación antes de borrarlo.
+
+“Jarvis, apágate”
+Detiene la escucha en segundo plano y cierra la app por completo."""
+    }
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { granted ->
@@ -88,6 +133,8 @@ class MainActivity : AppCompatActivity() {
         listenerStatus = findViewById(R.id.listener_status)
         detailsToggle = findViewById(R.id.details_toggle)
         detailsPanel = findViewById(R.id.details_panel)
+        val commandsToggle = findViewById<TextView>(R.id.commands_toggle)
+        val speakRepliesSwitch = findViewById<Switch>(R.id.speak_replies_switch)
         val serverUrlInput = findViewById<EditText>(R.id.server_url_input)
         val passwordInput = findViewById<EditText>(R.id.password_input)
         val loginButton = findViewById<Button>(R.id.login_button)
@@ -108,6 +155,22 @@ class MainActivity : AppCompatActivity() {
             val opening = detailsPanel.visibility != View.VISIBLE
             detailsPanel.visibility = if (opening) View.VISIBLE else View.GONE
             detailsToggle.text = if (opening) "Detalles ▴" else "Detalles ▾"
+        }
+
+        // Separate from "Detalles" on purpose — this is a reference for the
+        // user, not something to configure, so it lives in its own dialog
+        // rather than sharing the settings panel.
+        commandsToggle.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("Comandos de JARVIS")
+                .setMessage(COMMANDS_HELP_TEXT)
+                .setPositiveButton("Cerrar", null)
+                .show()
+        }
+
+        speakRepliesSwitch.isChecked = prefs.getBoolean("speak_replies_enabled", true)
+        speakRepliesSwitch.setOnCheckedChangeListener { _, checked ->
+            prefs.edit().putBoolean("speak_replies_enabled", checked).apply()
         }
 
         loginButton.setOnClickListener {
@@ -151,7 +214,11 @@ class MainActivity : AppCompatActivity() {
                 work = { api.sendMessage(message) },
                 onSuccess = { chatReply ->
                     addChatBubble(chatReply.reply, isUser = false)
-                    speak(chatReply.reply)
+                    if (prefs.getBoolean("speak_replies_enabled", true)) {
+                        speak(chatReply.reply)
+                    } else {
+                        orbView.setEnergy(0f)
+                    }
                 },
                 onError = { err ->
                     addChatBubble("Error: ${err.message}", isUser = false)

@@ -70,8 +70,8 @@
 
         <com.jarvis.app.OrbView
             android:id="@+id/orb_view"
-            android:layout_width="200dp"
-            android:layout_height="200dp"
+            android:layout_width="260dp"
+            android:layout_height="260dp"
             android:layout_marginBottom="12dp" />
 
         <ScrollView
@@ -173,17 +173,35 @@
             android:textSize="12sp"
             android:gravity="center_horizontal" />
 
-        <TextView
-            android:id="@+id/details_toggle"
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:background="@drawable/pill_button_secondary_bg"
-            android:paddingHorizontal="18dp"
-            android:paddingVertical="6dp"
-            android:text="Detalles ▾"
-            android:textColor="#9A8BC4"
-            android:textSize="12sp" />
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/commands_toggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/pill_button_secondary_bg"
+                android:paddingHorizontal="18dp"
+                android:paddingVertical="6dp"
+                android:text="Comandos"
+                android:textColor="#9A8BC4"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/details_toggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/pill_button_secondary_bg"
+                android:paddingHorizontal="18dp"
+                android:paddingVertical="6dp"
+                android:text="Detalles ▾"
+                android:textColor="#9A8BC4"
+                android:textSize="12sp" />
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/details_panel"
@@ -192,6 +210,44 @@
             android:orientation="vertical"
             android:layout_marginTop="12dp"
             android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Audio"
+                android:textColor="#9A8BC4"
+                android:textSize="12sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="16dp">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Leer las respuestas de JARVIS en voz alta"
+                    android:textColor="#EDE9FE"
+                    android:textSize="13sp" />
+
+                <Switch
+                    android:id="@+id/speak_replies_switch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true"
+                    android:thumbTint="#EDE9FE"
+                    android:trackTint="#A855F7" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginBottom="16dp"
+                android:background="#2c1a54" />
 
             <TextView
                 android:layout_width="wrap_content"

@@ -189,8 +189,24 @@ see "What's missing" below.
   notification if that permission was never granted. JARVIS never draws
   anything visible with this permission. See `JARVIS/SECURITY.md` §
   Android app actions and `JARVIS/ARCHITECTURE.md` § Decisions.
+- **Orb tuned bigger/denser, plus two small UI additions** — the orb
+  container grew to 260dp with ~1.5x more particles and roughly doubled
+  particle size, after the user reported it looked sparse/dim on a real
+  phone (no device profiling behind the new numbers — first thing to
+  dial back if a real phone drops frames). `MainActivity` also gained a
+  "Comandos" button (a plain `AlertDialog` listing every voice command,
+  deliberately separate from "Detalles") and a "Leer las respuestas de
+  JARVIS en voz alta" switch inside "Detalles" that mutes automatic TTS
+  playback for typed chat replies only (the background listener always
+  speaks). See `JARVIS/ARCHITECTURE.md` § Decisions.
 
 ## What's missing / next steps
+
+- **The bigger/denser orb needs a real-device look** — same untested-
+  outside-this-sandbox caveat as every other Android UI change. Worth
+  confirming specifically: ~540 particles/frame doesn't drop frames on
+  the software-rendered buffer canvas, and the brighter/slower-fading
+  glow doesn't look muddy or oversaturated in practice.
 
 - **The direct-launch overlay permission needs a real-device test** — the
   documented Android exemption (`SYSTEM_ALERT_WINDOW` + an active

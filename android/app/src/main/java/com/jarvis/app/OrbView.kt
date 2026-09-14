@@ -40,12 +40,15 @@ class OrbView @JvmOverloads constructor(
     private class Particle(val ring: Ring, val baseAngle: Float, val radiusJitter: Float)
     private class Vec3(val x: Float, val y: Float, val z: Float)
 
+    // Denser than the web version's original counts (60/75/85/95/45) —
+    // on a phone-sized view the sphere read as sparse/thin, so each ring
+    // carries about 1.5x more particles here.
     private val rings = listOf(
-        Ring(0.5f, 0.95f, 0.2f, 60, 0.55f, 1),
-        Ring(0.68f, 0.3f, -0.55f, 75, 0.4f, -1),
-        Ring(0.84f, -0.65f, 0.8f, 85, 0.5f, 1),
-        Ring(1.0f, 0.12f, -0.9f, 95, 0.32f, -1),
-        Ring(0.36f, 1.3f, 0.45f, 45, 0.8f, 1),
+        Ring(0.5f, 0.95f, 0.2f, 90, 0.55f, 1),
+        Ring(0.68f, 0.3f, -0.55f, 112, 0.4f, -1),
+        Ring(0.84f, -0.65f, 0.8f, 128, 0.5f, 1),
+        Ring(1.0f, 0.12f, -0.9f, 142, 0.32f, -1),
+        Ring(0.36f, 1.3f, 0.45f, 68, 0.8f, 1),
     )
 
     private val particles: List<Particle> = rings.flatMap { ring ->
@@ -84,7 +87,7 @@ class OrbView @JvmOverloads constructor(
     private var bufferCanvas: Canvas? = null
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2.5f }
+    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 3.5f }
     private val addXfermode = PorterDuffXfermode(PorterDuff.Mode.ADD)
 
     private var running = false
@@ -186,9 +189,12 @@ class OrbView @JvmOverloads constructor(
 
         // Trail fade: a low-alpha dark fill instead of a hard clear leaves
         // faint motion trails, same as the web version's fillRect trick.
+        // A gentler fade than the web original (0.32→0.24 base) lets the
+        // glow accumulate more before it's wiped, so the sphere reads as
+        // a fuller light instead of a faint one.
         fillPaint.xfermode = null
         fillPaint.shader = null
-        fillPaint.color = argb(0.32f - e * 0.08f, 4, 2, 12)
+        fillPaint.color = argb(0.24f - e * 0.06f, 4, 2, 12)
         canvas.drawRect(0f, 0f, w, h, fillPaint)
 
         val globalRot = t * 0.3f
@@ -203,7 +209,7 @@ class OrbView @JvmOverloads constructor(
             val endY = cy + sin(a) * len
             strokePaint.shader = LinearGradient(
                 cx, cy, endX, endY,
-                argb(0.16f + e * 0.28f, 216, 180, 254),
+                argb(0.26f + e * 0.34f, 216, 180, 254),
                 argb(0f, 139, 92, 246),
                 Shader.TileMode.CLAMP,
             )
@@ -225,13 +231,16 @@ class OrbView @JvmOverloads constructor(
             val sx = cx + pos.x * perspective
             val sy = cy + pos.y * perspective
             val depth = perspective.coerceIn(0.15f, 1f)
-            val size = max(0.6f, (1.1f + e * 1.4f) * depth)
+            // Noticeably bigger than the web original (1.1 base/0.6 floor) —
+            // small dots got lost on a phone screen; this reads as clearly
+            // visible particles instead of a faint dust.
+            val size = max(1.1f, (1.9f + e * 2.1f) * depth)
 
-            val lightness = 55f + depth * 20f + e * 10f
+            val lightness = 58f + depth * 20f + e * 12f
             val hue = 268f + depth * 18f
             fillPaint.shader = null
             fillPaint.xfermode = addXfermode
-            fillPaint.color = hslaToColor(hue, 90f, lightness, 0.35f + depth * 0.5f)
+            fillPaint.color = hslaToColor(hue, 92f, lightness, 0.45f + depth * 0.55f)
             canvas.drawCircle(sx, sy, size, fillPaint)
         }
 
@@ -240,8 +249,8 @@ class OrbView @JvmOverloads constructor(
         fillPaint.shader = RadialGradient(
             cx, cy, max(1f, coreRadius),
             intArrayOf(
-                argb(0.92f, 243, 232, 255),
-                argb(0.65f + e * 0.25f, 216, 180, 254),
+                argb(1f, 243, 232, 255),
+                argb(0.78f + e * 0.22f, 216, 180, 254),
                 argb(0f, 88, 28, 135),
             ),
             floatArrayOf(0f, 0.35f, 1f),

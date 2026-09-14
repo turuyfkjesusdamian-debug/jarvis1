@@ -161,6 +161,29 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Made the Android orb (`OrbView.kt`) bigger and denser
+  after the user reported it looked sparse/dim on a real phone: the
+  container grew from 200dp to 260dp, each ring's particle count went up
+  ~1.5x (60/75/85/95/45 → 90/112/128/142/68), particle size roughly
+  doubled (floor 0.6→1.1, scale 1.1+e·1.4→1.9+e·2.1), ray/core alpha and
+  the ray stroke width increased, and the per-frame trail-fade alpha was
+  lowered (0.32→0.24 base) so brightness accumulates more before being
+  wiped. These are tuning-pass numbers with no device profiling behind
+  them — if a real phone shows dropped frames with ~540 particles/frame
+  on the software-rendered buffer canvas, that's the first thing to dial
+  back down, not the container size or feel.
+- **2026-09-14** — Added two small additions to `MainActivity`'s UI, both
+  requested directly: (1) a "Comandos" button, deliberately separate from
+  "Detalles" — it opens a plain `AlertDialog` listing every voice command
+  JARVIS understands (`COMMANDS_HELP_TEXT`, a hand-maintained reference,
+  not a listing generated from `JarvisListenerService.kt`'s regexes —
+  keep both in sync manually when a command changes); (2) inside
+  "Detalles", a "Leer las respuestas de JARVIS en voz alta" switch
+  (`speak_replies_enabled` in SharedPreferences, default on) that gates
+  the automatic TTS playback after a *typed* chat reply. Deliberately
+  scoped to the chat screen only — the background listener
+  (`JarvisListenerService`) always speaks, since silencing it would
+  defeat the point of a voice assistant that isn't being looked at.
 - **2026-09-14** — Added an optional way for "abre X" (and every other
   app-launching command — WhatsApp, calls, YouTube, Maps) to open
   directly instead of through a tap-to-open notification, per the user's
