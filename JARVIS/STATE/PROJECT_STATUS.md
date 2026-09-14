@@ -139,7 +139,7 @@ see "What's missing" below.
   `/api/chat` + `/api/tts` pipeline — toggled from a button in
   `MainActivity`, which also prompts for the battery-optimization
   exemption and restarts itself after a reboot (`BootReceiver`) if it was
-  on. **Four on-device actions added, all processed entirely on-device**
+  on. **Six on-device actions added, all processed entirely on-device**
   (never touching the server): "envíale un mensaje a X que diga Y" and
   "llama a X" **require an explicit spoken "sí" first** (confirmed
   working live, after fixing two real bugs found via live testing — a
@@ -153,10 +153,15 @@ see "What's missing" below.
   full name and each word, with a minimum-length guard) — the
   confirmation prompt always reads back the real resolved contact name
   first, so a wrong guess is still caught before anything sends.
-  "reproduce/busca X
-  en YouTube" and "abre X" need **no confirmation** (opening an app or a
-  search page affects no one but the user) and use the same
-  notification-launch mechanism. "Jarvis apágate" stops the listener and
+  "reproduce/busca X en YouTube", "abre X", "cómo llego a/de X (a Y)", and
+  "busca X cerca" need **no confirmation** (opening an app or a search/
+  route page affects no one but the user) and use the same
+  notification-launch mechanism. The Maps commands open Google's own
+  public "Maps URLs" links (no API key, no new Android permission — Maps
+  supplies current location itself) but don't read the answer back out
+  loud; the user was asked and chose this free/no-setup version over the
+  spoken-answer one, which would need a Google Maps Platform API key and
+  a billing account on file. "Jarvis apágate" stops the listener and
   fully closes the app, also no confirmation needed. See
   `JARVIS/SECURITY.md` § Android app actions and
   `JARVIS/ARCHITECTURE.md` § Decisions for the full design and the
@@ -164,13 +169,26 @@ see "What's missing" below.
 
 ## What's missing / next steps
 
-- **"Abre X" and the YouTube search command need a real-device test** —
-  untested outside this environment, same constraint as every Android
-  feature so far. Needs confirming: the `<queries>` declaration actually
-  surfaces third-party apps (not just JARVIS itself) via
-  `queryIntentActivities`, common app names resolve correctly, and the
-  YouTube search-results page opens as expected via the tap-to-open
-  notification.
+- **"Abre X", the YouTube search command, and the new Maps commands need
+  a real-device test** — untested outside this environment, same
+  constraint as every Android feature so far. Needs confirming: the
+  `<queries>` declaration actually surfaces third-party apps (not just
+  JARVIS itself) via `queryIntentActivities`, common app names resolve
+  correctly, the YouTube search-results page opens as expected via the
+  tap-to-open notification, and Google Maps actually opens with the
+  route/nearby search pre-filled (rather than, say, falling back to a
+  browser if the Maps app isn't set as the default handler).
+- **The spoken-answer Maps tier remains a designed-for-later option** —
+  the user was asked to choose between "just opens Maps" (shipped, free,
+  no new key) and "JARVIS speaks the travel time / nearest place out
+  loud" (needs a Google Maps Platform API key + a billing account on
+  Google's side); they picked the free version for now. If they later
+  want the spoken version, it needs a new `maps.*` tool on the *web*
+  backend (not on-device — a real API call, unlike the deep links), a
+  `GOOGLE_MAPS_API_KEY` following the same secret-handling rules as
+  `GEMINI_API_KEY`/`ELEVENLABS_API_KEY`, and the Android app forwarding
+  these specific commands to `/api/chat` instead of matching them
+  on-device.
 - **An external uptime pinger needs to be pointed at `GET /healthz`** to
   stop Render's free tier from spinning the service down after 15 minutes
   idle — this is what caused the "sometimes instant, sometimes 30+

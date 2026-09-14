@@ -102,11 +102,12 @@ requires a valid session before responding.
   invalidates every previously issued session automatically, since old
   sessions were signed with the old password and will fail verification.
 
-## Android app actions (WhatsApp, calls, apps, YouTube)
+## Android app actions (WhatsApp, calls, apps, YouTube, Maps)
 
 The Android companion app (`android/`) can, on voice command: prepare a
 WhatsApp message, place a real phone call, open any installed app by
-name, or open a YouTube search — see `JARVIS/ARCHITECTURE.md` §
+name, open a YouTube search, or open Google Maps with a route or a
+nearby-places search already filled in — see `JARVIS/ARCHITECTURE.md` §
 Decisions. This is a second, independent place security rules apply, with
 its own implementation (no `toolRouter`, no zod schema, no
 `"destructive"` tool tier — this is plain Kotlin in
@@ -144,14 +145,19 @@ from Threat model #3 applies just as it does in `app/`:
   inside WhatsApp. Phone calls, by contrast, place immediately on
   confirmation (`Intent.ACTION_CALL`) — a real call, not a dialer preview
   — since Android does not have an equivalent restriction there.
-- **Opening an app or a YouTube search never asks for confirmation and
-  launches immediately** — consistent with the distinction above. Neither
-  reads or sends anything sensitive: the app list comes from
-  `PackageManager` (visible only via the `<queries>` declaration in
-  `AndroidManifest.xml`, not the broader `QUERY_ALL_PACKAGES`
-  permission), and a YouTube command only ever opens a *search-results*
-  page — never plays a specific video automatically — so the user always
-  sees what they're about to open before it does anything.
+- **Opening an app, a YouTube search, or a Google Maps route/nearby search
+  never asks for confirmation and launches immediately** — consistent with
+  the distinction above. None of these read or send anything sensitive:
+  the app list comes from `PackageManager` (visible only via the
+  `<queries>` declaration in `AndroidManifest.xml`, not the broader
+  `QUERY_ALL_PACKAGES` permission), a YouTube command only ever opens a
+  *search-results* page — never plays a specific video automatically —
+  and a Maps command only opens Google's own public "Maps URLs" link
+  (`google.com/maps/dir/...` or `.../search/...`) with the route or query
+  the user just said, requesting no new Android permission (Maps itself
+  supplies "current location" using its own, separately-granted location
+  permission) — so the user always sees what they're about to open before
+  it does anything.
 - If a *new* action of this kind is ever added, decide which category it
   falls into using the same test — does it affect anyone besides the user
   making the request? If yes, it must follow the WhatsApp/calls pattern:

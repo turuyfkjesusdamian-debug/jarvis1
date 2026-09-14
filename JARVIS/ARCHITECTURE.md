@@ -161,6 +161,25 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Added Google Maps commands: "cómo llego a X", "cómo
+  llego de X a Y" (directions), and "busca X cerca" (nearby search) —
+  `tryParseMapsCommand`/`launchDirections` in `JarvisListenerService.kt`.
+  Opens Google Maps via its public, documented "Maps URLs" scheme
+  (`google.com/maps/dir/?api=1&destination=...` /
+  `.../search/?api=1&query=...`) — same reasoning as the YouTube/Spotify
+  search deep links: a real, stable URL format the app is built to
+  handle, not a guessed one. No new Android permission needed — when
+  `origin` is omitted, Maps uses the device's current location itself via
+  its own already-granted location permission, not JARVIS's. No spoken
+  confirmation, same as opening any app or search page — nothing happens
+  to anyone but the user. Explicitly does **not** read the travel time or
+  the nearest result back out loud — the user asked about this
+  specifically, and doing that needs Google's actual Directions/Places
+  API, which (unlike Gemini/ElevenLabs so far) requires a billing account
+  on file even though it has a generous free monthly quota. Given that
+  extra friction, the user chose the free/no-API-key version for now;
+  the spoken-answer version stays a designed-for-later option if they
+  decide to set up a Google Cloud API key later.
 - **2026-09-14** — Made contact name matching for WhatsApp/calls
   nickname-tolerant (`namesMatch`/`fuzzyContains` in
   `JarvisListenerService.kt`). Previously a spoken name only matched a

@@ -110,6 +110,11 @@ class JarvisListenerService : Service(), RecognitionListener {
         // Just "abre X y reproduce Z" — tried before OPEN_APP_REGEX, which would
         // otherwise swallow the whole thing as one (nonexistent) app name.
         private val OPEN_AND_PLAY_REGEX = Regex("abre\\s+(.+?)\\s+y\\s+reproduce\\s+(.+)")
+        // "Cómo llego de X a Y" / "cómo llego a Y" (current location assumed as
+        // origin) / "busca X cerca" — see tryParseMapsCommand.
+        private val DIRECTIONS_FROM_TO_REGEX = Regex("como llego de\\s+(.+?)\\s+a\\s+(.+)")
+        private val DIRECTIONS_TO_REGEX = Regex("como llego a\\s+(.+)")
+        private val NEARBY_REGEX = Regex("busca\\s+(.+?)\\s+cerca(?:\\s+de\\s+mi)?")
         // Apps with a real, publicly documented search-by-title deep link —
         // deliberately small. Guessing a scheme for an app that doesn't
         // publish one (Disney+, Netflix, ...) would silently open to the
@@ -350,6 +355,7 @@ class JarvisListenerService : Service(), RecognitionListener {
             ?: tryParseCallCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
             ?: tryParseOpenAndPlayCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
             ?: tryParseYouTubeCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
+            ?: tryParseMapsCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
             ?: tryParseOpenAppCommand(command)
 
         when (parsed) {
@@ -468,6 +474,74 @@ class JarvisListenerService : Service(), RecognitionListener {
             intent,
             "Toque para ver \"$query\" en YouTube",
             "Listo, señor. Toque la notificación para ver los resultados de $query en YouTube."
+        )
+    }
+
+    // --- "Cómo llego a X" / "cómo llego de X a Y" / "busca X cerca" (Google Maps) ---
+    // Opens Google Maps with the route or nearby search already filled in, via
+    // Maps' own public "Maps URLs" scheme (no API key, no server round-trip,
+    // same reasoning as the YouTube/Spotify deep links — a documented URL
+    // format is reliable, guessing one isn't). No confirmation needed, same
+    // as opening any app or search page. JARVIS does not read the travel time
+    // or the nearest result back out loud — that needs Google's real
+    // Directions/Places API (a key plus a billing account on Google's side),
+    // a bigger step the user deliberately deferred — see
+    // JARVIS/ARCHITECTURE.md § Decisions.
+
+    private fun tryParseMapsCommand(command: String): CommandParseResult {
+        val normalized = stripAccents(command.lowercase(Locale("es")))
+
+        DIRECTIONS_FROM_TO_REGEX.find(normalized)?.let { match ->
+            val originRange = match.groups[1]?.range
+            val destRange = match.groups[2]?.range
+            if (originRange != null && destRange != null) {
+                val origin = command.substring(originRange.first, minOf(originRange.last + 1, command.length)).trim()
+                val destination = command.substring(destRange.first, minOf(destRange.last + 1, command.length))
+                    .trim().trimEnd('.', '!', '?')
+                if (origin.isNotEmpty() && destination.isNotEmpty()) return launchDirections(origin, destination)
+            }
+        }
+
+        DIRECTIONS_TO_REGEX.find(normalized)?.let { match ->
+            val destRange = match.groups[1]?.range
+            if (destRange != null) {
+                val destination = command.substring(destRange.first, minOf(destRange.last + 1, command.length))
+                    .trim().trimEnd('.', '!', '?')
+                if (destination.isNotEmpty()) return launchDirections(null, destination)
+            }
+        }
+
+        NEARBY_REGEX.find(normalized)?.let { match ->
+            val queryRange = match.groups[1]?.range
+            if (queryRange != null) {
+                val query = command.substring(queryRange.first, minOf(queryRange.last + 1, command.length)).trim()
+                if (query.isNotEmpty()) {
+                    val encoded = URLEncoder.encode("$query cerca de mi", "UTF-8").replace("+", "%20")
+                    val uri = Uri.parse("https://www.google.com/maps/search/?api=1&query=$encoded")
+                    val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    return CommandParseResult.LaunchNow(
+                        intent,
+                        "Toque para ver \"$query\" cerca de usted",
+                        "Listo, señor. Toque la notificación para ver $query cerca de usted en Maps."
+                    )
+                }
+            }
+        }
+
+        return CommandParseResult.NotAMatch
+    }
+
+    /** [origin] null means "use my current location", which Maps does automatically when omitted. */
+    private fun launchDirections(origin: String?, destination: String): CommandParseResult {
+        val encodedDest = URLEncoder.encode(destination, "UTF-8").replace("+", "%20")
+        val originParam = origin?.let { "&origin=${URLEncoder.encode(it, "UTF-8").replace("+", "%20")}" } ?: ""
+        val uri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$encodedDest$originParam")
+        val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val spokenRoute = origin?.let { "desde $it hasta $destination" } ?: "hasta $destination"
+        return CommandParseResult.LaunchNow(
+            intent,
+            "Toque para ver la ruta $spokenRoute",
+            "Listo, señor. Toque la notificación para ver la ruta $spokenRoute."
         )
     }
 
