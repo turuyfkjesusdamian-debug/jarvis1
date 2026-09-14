@@ -161,6 +161,22 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Asked what "conciencia" (consciousness) meant in
+  practice for JARVIS, the user's concrete ask turned out to be: bring up
+  things from past conversations without being asked. This already
+  half-existed — the "memory" intent answers "¿qué recuerdas...?"
+  directly — but ordinary chit-chat (the "general" intent, answered by
+  Gemini) never consulted permanent memory at all, so JARVIS could only
+  ever reference something it happened to catch in the last 6 session
+  turns. `JarvisCore.buildSystemPromptWithMemory` now pulls up to 6
+  relevant-or-recent facts from `PermanentMemory` on every general-intent
+  reply and appends them to the Gemini system prompt as a clearly-labeled
+  data block, instructing the model to work them in naturally rather than
+  reciting them — see `JARVIS/MEMORY.md` § "Bringing facts up unprompted"
+  for the exact mechanism. Deliberately did not attempt actual machine
+  consciousness (not something achievable, an open question well beyond
+  this project's scope) — this is a bounded prompt-engineering nudge that
+  produces the *behavior* the user actually wanted.
 - **2026-09-14** — Two more fixes, both from live testing on the redesigned
   screen:
   1. **General chit-chat replying only "Entendido, señor."** — the user

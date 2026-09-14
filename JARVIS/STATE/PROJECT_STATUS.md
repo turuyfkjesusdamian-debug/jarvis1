@@ -21,7 +21,7 @@ belongs to; and — in progress — a native Android companion app (`android/`)
 was started for a voice command that works without opening the web app
 first (see `JARVIS/ARCHITECTURE.md` § Decisions for the full rationale on
 each, including why this sandbox can't build it directly and builds it via
-GitHub Actions instead). 127/127 web-app tests pass (`cd app && npm test`),
+GitHub Actions instead). 129/129 web-app tests pass (`cd app && npm test`),
 `npm run typecheck` and `npm run build` are clean. The Android app has no
 automated tests yet — it can't be exercised in this environment at all;
 see "What's missing" below.
@@ -68,7 +68,13 @@ see "What's missing" below.
   Gemini (`voice/geminiClient.ts`, `GEMINI_MODEL`) when `GEMINI_API_KEY`
   is set, falling back to the template if not configured or the call
   fails. Text chat and voice mode share this exact same code path — there
-  is no separate "realtime session" concept.
+  is no separate "realtime session" concept. **General chit-chat also
+  brings up remembered facts unprompted**: `JarvisCore.buildSystemPromptWithMemory`
+  appends up to 6 relevant-or-recent `PermanentMemory` facts to Gemini's
+  system prompt as labeled data (never an instruction), so JARVIS can
+  reference something it was told before without the user having to
+  explicitly ask "¿qué recuerdas?" — see `JARVIS/MEMORY.md` § "Bringing
+  facts up unprompted".
 - **Voice** (`app/src/voice/`): two independent, provider-specific
   clients — `geminiClient.ts` (general-intent text replies) and
   `elevenLabsClient.ts` (speech synthesis, `POST /api/tts`). Speech
@@ -99,7 +105,7 @@ see "What's missing" below.
   `public/icons/`) — "Add to Home Screen" gives it its own icon and a
   full-screen, no-address-bar window. `login.html` is the gate page shown
   when `JARVIS_APP_PASSWORD` is set and no valid session exists yet.
-- **Tests** (`app/tests/`, 127 tests / 20 files): indexer, retrieval,
+- **Tests** (`app/tests/`, 129 tests / 20 files): indexer, retrieval,
   reader (incl. path-traversal rejection), both memory tiers + the
   persistence heuristic (incl. the question-vs-statement fix), the
   forget-command parser and its confirm-then-act flow (asks before
@@ -109,10 +115,12 @@ see "What's missing" below.
   validation/permission/confirmation logic, intent classification (incl.
   recall questions), an end-to-end `JarvisCore` flow (including a test
   that a note containing "ignore all previous instructions" is treated as
-  inert data, per `JARVIS/SECURITY.md`, and tests for the
-  conversational-reply path with/without a key and on failure), the
-  Gemini + ElevenLabs clients with `fetch` mocked (no network, no real API
-  key needed), and the auth gate's session signing/verification logic
+  inert data, per `JARVIS/SECURITY.md`, tests for the conversational-reply
+  path with/without a key and on failure, and tests that remembered facts
+  get folded into the Gemini system prompt unprompted — both when
+  keyword-relevant and as a recency fallback), the Gemini + ElevenLabs
+  clients with `fetch` mocked (no network, no real API key needed), and
+  the auth gate's session signing/verification logic
   (`tests/server/auth.test.ts`) —
   `vitest.config.ts` forces
   `GEMINI_API_KEY`/`ELEVENLABS_API_KEY`/`ELEVENLABS_VOICE_ID`/`JARVIS_APP_PASSWORD`

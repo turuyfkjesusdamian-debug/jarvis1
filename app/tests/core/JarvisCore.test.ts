@@ -144,6 +144,81 @@ describe("JarvisCore", () => {
     }
   });
 
+  it("brings up remembered facts in general chit-chat without being asked", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const previousKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = "test-key";
+    resetConfigForTests();
+
+    let capturedBody: any;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        capturedBody = JSON.parse(init.body as string);
+        return {
+          ok: true,
+          json: async () => ({ candidates: [{ content: { parts: [{ text: "Todo en orden, señor." }] } }] }),
+        } as Response;
+      })
+    );
+
+    try {
+      const core = new JarvisCore(vault.vaultPath);
+      await core.init();
+      await core.memory.permanent.save({
+        category: "preferences",
+        date: "2026-09-14",
+        text: "Le gusta el café por las mañanas.",
+      });
+
+      await core.handleTextMessage("hola cómo estás");
+
+      const systemPrompt = capturedBody.systemInstruction.parts[0].text as string;
+      expect(systemPrompt).toContain("Le gusta el café por las mañanas.");
+    } finally {
+      vi.unstubAllGlobals();
+      process.env.GEMINI_API_KEY = previousKey;
+      resetConfigForTests();
+    }
+  });
+
+  it("still includes a fact as baseline background even when the question doesn't obviously relate to it", async () => {
+    const vault = await createTempVault();
+    cleanup = vault.cleanup;
+    const previousKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = "test-key";
+    resetConfigForTests();
+
+    let capturedBody: any;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        capturedBody = JSON.parse(init.body as string);
+        return {
+          ok: true,
+          json: async () => ({ candidates: [{ content: { parts: [{ text: "Todo en orden, señor." }] } }] }),
+        } as Response;
+      })
+    );
+
+    try {
+      const core = new JarvisCore(vault.vaultPath);
+      await core.init();
+      // Fixture vault already seeds one important-facts entry; a question
+      // about the weather doesn't obviously relate to it via keywords, but
+      // the "recent facts" fallback should still surface it as background.
+      await core.handleTextMessage("qué clima hace");
+
+      const systemPrompt = capturedBody.systemInstruction.parts[0].text as string;
+      expect(systemPrompt).toContain("Datos guardados sobre el usuario");
+    } finally {
+      vi.unstubAllGlobals();
+      process.env.GEMINI_API_KEY = previousKey;
+      resetConfigForTests();
+    }
+  });
+
   it("falls back to the templated reply if the conversational call fails", async () => {
     const vault = await createTempVault();
     cleanup = vault.cleanup;
