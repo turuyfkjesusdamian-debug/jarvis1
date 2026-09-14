@@ -161,6 +161,23 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Simplified "abre X" / "abre X y reproduce Y" to their
+  literal forms only (dropped "ábreme"/"la app de X"/"busca"/"pon"
+  synonyms), per the user's explicit request. Also found and fixed a real
+  bug while debugging why "abre X y reproduce Y" reported "dijo algo pero
+  no llegó ninguna notificación": `launchViaNotification` never checked
+  whether notifications were actually enabled before calling `notify()`
+  — which doesn't throw when they're off, it just silently shows
+  nothing, so every command using it (WhatsApp, calls, YouTube, opening
+  apps) could fail exactly as silently as the background-activity-start
+  restriction it was built to work around. Now checks
+  `NotificationManagerCompat.areNotificationsEnabled()` and the specific
+  channel's importance first, speaking a clear diagnostic ("tiene las
+  notificaciones de JARVIS desactivadas...") instead of posting nothing.
+  `launchViaNotification` now returns whether it actually posted, and
+  every call site only speaks its own success message when it did —
+  otherwise the two `speakLocally` calls would race, with the second
+  (queued with `QUEUE_FLUSH`) cutting off the diagnostic message.
 - **2026-09-14** — Added compound "abre X y reproduce/busca Y" (e.g.
   "abre Disney reproduce deadpool"). Only opens X *and* searches inside
   it for a small allowlist of apps (`SEARCH_DEEP_LINKS`: currently

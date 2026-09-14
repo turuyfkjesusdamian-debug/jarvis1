@@ -21,6 +21,7 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.FileOutputStream
@@ -103,14 +104,12 @@ class JarvisListenerService : Service(), RecognitionListener {
         // Matches e.g. "reproduce despacito en youtube" / "busca gatos en youtube".
         // Opens search results, not a specific video — see class doc comment.
         private val YOUTUBE_REGEX = Regex("(?:reproduce|busca|pon)\\s+(.+?)\\s+en\\s+youtube")
-        // Matches e.g. "abre spotify" / "ábreme la app de whatsapp".
-        private val OPEN_APP_REGEX = Regex(
-            "abre(?:me)?\\s+(?:la\\s+app\\s+de\\s+|la\\s+aplicacion\\s+de\\s+|la\\s+app\\s+|la\\s+aplicacion\\s+)?(.+)"
-        )
-        // Matches e.g. "abre disney reproduce deadpool" / "abre spotify y busca queen".
-        // Tried before OPEN_APP_REGEX, which would otherwise swallow the whole
-        // thing as one (nonexistent) app name.
-        private val OPEN_AND_PLAY_REGEX = Regex("abre(?:me)?\\s+(.+?)\\s+(?:y\\s+)?(?:reproduce|busca|pon)\\s+(.+)")
+        // Just "abre X" — kept deliberately literal (no "ábreme"/"la app de X"
+        // variants) per the user's exact wording.
+        private val OPEN_APP_REGEX = Regex("abre\\s+(.+)")
+        // Just "abre X y reproduce Z" — tried before OPEN_APP_REGEX, which would
+        // otherwise swallow the whole thing as one (nonexistent) app name.
+        private val OPEN_AND_PLAY_REGEX = Regex("abre\\s+(.+?)\\s+y\\s+reproduce\\s+(.+)")
         // Apps with a real, publicly documented search-by-title deep link —
         // deliberately small. Guessing a scheme for an app that doesn't
         // publish one (Disney+, Netflix, ...) would silently open to the
@@ -366,8 +365,9 @@ class JarvisListenerService : Service(), RecognitionListener {
                 speakLocally(prompt)
             }
             is CommandParseResult.LaunchNow -> {
-                launchViaNotification(parsed.intent, parsed.tapText)
-                speakLocally(parsed.spokenText)
+                if (launchViaNotification(parsed.intent, parsed.tapText)) {
+                    speakLocally(parsed.spokenText)
+                }
             }
             is CommandParseResult.ContactNotFound ->
                 speakLocally("No encontré ningún contacto llamado ${parsed.name}, señor.")
@@ -598,8 +598,9 @@ class JarvisListenerService : Service(), RecognitionListener {
             val encodedMessage = URLEncoder.encode(pending.message, "UTF-8").replace("+", "%20")
             val uri = Uri.parse("https://wa.me/${pending.phone}?text=$encodedMessage")
             val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            launchViaNotification(intent, "Toque para abrir WhatsApp con el mensaje para ${pending.contactName}")
-            speakLocally("Listo, señor. Toque la notificación para abrir WhatsApp con el mensaje para ${pending.contactName}.")
+            if (launchViaNotification(intent, "Toque para abrir WhatsApp con el mensaje para ${pending.contactName}")) {
+                speakLocally("Listo, señor. Toque la notificación para abrir WhatsApp con el mensaje para ${pending.contactName}.")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "openWhatsApp failed", e)
             speakLocally("No pude preparar WhatsApp, señor.")
@@ -610,8 +611,9 @@ class JarvisListenerService : Service(), RecognitionListener {
         try {
             val uri = Uri.parse("tel:${pending.phone}")
             val intent = Intent(Intent.ACTION_CALL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            launchViaNotification(intent, "Toque para llamar a ${pending.contactName}")
-            speakLocally("Listo, señor. Toque la notificación para llamar a ${pending.contactName}.")
+            if (launchViaNotification(intent, "Toque para llamar a ${pending.contactName}")) {
+                speakLocally("Listo, señor. Toque la notificación para llamar a ${pending.contactName}.")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "placeCall failed", e)
             speakLocally("No pude realizar la llamada, señor.")
@@ -715,8 +717,28 @@ class JarvisListenerService : Service(), RecognitionListener {
     /** Posts a tap-to-launch notification for [intent] — the only reliable way to
      * open another app (WhatsApp, the dialer) from a background Service; a direct
      * startActivity() call here is silently dropped by Android's background
-     * activity-launch restrictions (API 29+), with no exception to catch. */
-    private fun launchViaNotification(intent: Intent, tapText: String) {
+     * activity-launch restrictions (API 29+), with no exception to catch.
+     *
+     * Checks notification permission first and speaks up if it's off — this
+     * would otherwise fail exactly as silently as the restriction above:
+     * notify() doesn't throw when notifications are disabled, it just shows
+     * nothing, so the user hears "Listo, señor" and then sees no notification
+     * with no way to tell why. Returns whether the notification was actually
+     * posted — callers should only speak a "toque la notificación" success
+     * message when this returns true, since [speakLocally] flushes any
+     * in-progress speech and would otherwise cut off the diagnostic message
+     * this posts when it returns false. */
+    private fun launchViaNotification(intent: Intent, tapText: String): Boolean {
+        val nm = getSystemService(NotificationManager::class.java)
+        val channelBlocked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            nm.getNotificationChannel(ACTION_CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
+        if (!NotificationManagerCompat.from(this).areNotificationsEnabled() || channelBlocked) {
+            speakLocally(
+                "Señor, no puedo mostrarle una notificación — tiene las notificaciones de JARVIS " +
+                    "desactivadas. Actívelas en los ajustes del sistema para usar este comando."
+            )
+            return false
+        }
         val pendingIntent = PendingIntent.getActivity(
             this, System.currentTimeMillis().toInt(), intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
@@ -729,7 +751,8 @@ class JarvisListenerService : Service(), RecognitionListener {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .build()
-        getSystemService(NotificationManager::class.java).notify(ACTION_NOTIFICATION_ID, notification)
+        nm.notify(ACTION_NOTIFICATION_ID, notification)
+        return true
     }
 
     private fun buildNotification(text: String): Notification {
