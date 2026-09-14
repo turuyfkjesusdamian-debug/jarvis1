@@ -146,7 +146,14 @@ see "What's missing" below.
   self-hearing bug that made every confirmation resolve to "Cancelado"
   regardless of what was said, and Android silently blocking a background
   Service from actually opening WhatsApp/the dialer, fixed by launching
-  via a tap-to-open notification instead of directly); "reproduce/busca X
+  via a tap-to-open notification instead of directly). Contact name
+  matching is nickname-tolerant (`namesMatch` in
+  `JarvisListenerService.kt`): saying "Juan" now finds a contact saved as
+  "Juanito" and vice versa (bidirectional substring match, both on the
+  full name and each word, with a minimum-length guard) — the
+  confirmation prompt always reads back the real resolved contact name
+  first, so a wrong guess is still caught before anything sends.
+  "reproduce/busca X
   en YouTube" and "abre X" need **no confirmation** (opening an app or a
   search page affects no one but the user) and use the same
   notification-launch mechanism. "Jarvis apágate" stops the listener and

@@ -161,6 +161,26 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Made contact name matching for WhatsApp/calls
+  nickname-tolerant (`namesMatch`/`fuzzyContains` in
+  `JarvisListenerService.kt`). Previously a spoken name only matched a
+  contact if it was a literal substring of the saved display name in one
+  direction (`displayName.contains(spokenName)`) — so "manda un mensaje a
+  Juan" would find a contact saved as "Juanito" (superstring), but "manda
+  un mensaje a Juanito" would *not* find a contact saved as plain "Juan"
+  (the missing direction), per the user's report. Now checks containment
+  both ways, against the full name and each of its words, so either
+  direction of a suffix-style nickname ("Juan"/"Juanito", "Ana"/"Anita")
+  matches, with a minimum-length guard so short names like "Ana" don't
+  loosely match unrelated contacts. Deliberately did not add a hardcoded
+  Spanish nickname dictionary (Pepe/José, Chuy/Jesús, ...) — those are too
+  irregular to enumerate reliably, and the existing safety net already
+  covers a wrong guess: the confirmation prompt always reads back the
+  *actual* resolved contact name before sending/calling, so the user
+  hears exactly who would receive the message and can say "no" if it
+  matched the wrong person; an ambiguous case (multiple contacts fuzzy-
+  matching) already asked the user to be more specific rather than
+  guessing, unchanged by this fix.
 - **2026-09-14** — Added conversational memory: (1) session memory now
   survives a process restart — persisted as JSON to
   `JARVIS/STATE/session-history.json` on every turn and reloaded in

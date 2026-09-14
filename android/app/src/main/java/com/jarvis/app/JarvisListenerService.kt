@@ -550,7 +550,7 @@ class JarvisListenerService : Service(), RecognitionListener {
             .distinctBy { it.second.`package` }
     }
 
-    /** Returns (displayName, number) pairs whose name contains [name], accent/case-insensitive. */
+    /** Returns (displayName, number) pairs matching [name] (see [namesMatch]). */
     private fun lookupContactPhones(name: String): List<Pair<String, String>> {
         val target = stripAccents(name.lowercase(Locale("es")))
         val results = mutableListOf<Pair<String, String>>()
@@ -565,12 +565,40 @@ class JarvisListenerService : Service(), RecognitionListener {
                 while (cursor.moveToNext()) {
                     val displayName = cursor.getString(nameIdx) ?: continue
                     val number = cursor.getString(numberIdx) ?: continue
-                    if (stripAccents(displayName.lowercase(Locale("es"))).contains(target)) {
+                    if (namesMatch(target, displayName)) {
                         results.add(displayName to number)
                     }
                 }
             }
         return results.distinctBy { it.second }
+    }
+
+    /**
+     * Nickname-tolerant match: [target] is already accent/case-normalized;
+     * [displayName] is the raw contact name. A spoken name and a saved
+     * contact name rarely match character-for-character in Spanish — e.g.
+     * the user says "Juan" but the contact is saved as "Juanito" (or the
+     * reverse: saved as "Juan" but the user calls him "Juanito"). Checking
+     * containment in both directions, against the full name and each of
+     * its words, covers the common case of a nickname formed by adding a
+     * suffix (a diminutive like "-ito") on either side, without needing a
+     * hardcoded list of Spanish nicknames (which are too irregular — "Pepe"
+     * for "José", "Chuy" for "Jesús" — to cover generally).
+     *
+     * A minimum length guard avoids "Ana" matching every contact whose name
+     * merely contains "an".
+     */
+    private fun namesMatch(target: String, displayName: String): Boolean {
+        val normalizedDisplay = stripAccents(displayName.lowercase(Locale("es")))
+        if (fuzzyContains(normalizedDisplay, target)) return true
+        return normalizedDisplay.split(Regex("\\s+")).any { word -> fuzzyContains(word, target) }
+    }
+
+    private fun fuzzyContains(a: String, b: String): Boolean {
+        if (a.isEmpty() || b.isEmpty()) return false
+        val minMatchLength = 3
+        if (a.length < minMatchLength || b.length < minMatchLength) return a == b
+        return a.contains(b) || b.contains(a)
     }
 
     private fun digitsOnly(rawNumber: String): String = rawNumber.filter { it.isDigit() }
