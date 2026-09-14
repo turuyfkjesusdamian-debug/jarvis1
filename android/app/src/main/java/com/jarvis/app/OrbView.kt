@@ -122,14 +122,36 @@ class OrbView @JvmOverloads constructor(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        if (visibility == VISIBLE) startAnimating()
+    }
+
+    override fun onDetachedFromWindow() {
+        stopAnimating()
+        super.onDetachedFromWindow()
+    }
+
+    /**
+     * Pauses the per-frame animation loop while the view is GONE/INVISIBLE
+     * (e.g. the splash-screen orb once the main screen takes over) instead
+     * of wastefully computing particle positions no one can see — a plain
+     * visibility change doesn't detach the view from the window, so
+     * onAttachedToWindow/onDetachedFromWindow alone wouldn't catch this.
+     */
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (!isAttachedToWindow) return
+        if (visibility == VISIBLE) startAnimating() else stopAnimating()
+    }
+
+    private fun startAnimating() {
+        if (running) return
         running = true
         choreographer.postFrameCallback(frameCallback)
     }
 
-    override fun onDetachedFromWindow() {
+    private fun stopAnimating() {
         running = false
         choreographer.removeFrameCallback(frameCallback)
-        super.onDetachedFromWindow()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

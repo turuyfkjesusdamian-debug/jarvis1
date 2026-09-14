@@ -60,6 +60,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var audioStatus: TextView
     private lateinit var detailsPanel: LinearLayout
     private lateinit var detailsToggle: TextView
+    private lateinit var splashScreen: View
+    private lateinit var loginScreen: View
+    private lateinit var mainScreenRoot: View
 
     companion object {
         /**
@@ -124,6 +127,15 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        splashScreen = findViewById(R.id.splash_screen)
+        loginScreen = findViewById(R.id.login_screen)
+        mainScreenRoot = findViewById(R.id.main_screen)
+        val startButton = findViewById<Button>(R.id.start_button)
+        val loginServerUrlInput = findViewById<EditText>(R.id.login_server_url_input)
+        val loginPasswordInput = findViewById<EditText>(R.id.login_password_input)
+        val loginScreenButton = findViewById<Button>(R.id.login_screen_button)
+        val loginScreenStatus = findViewById<TextView>(R.id.login_screen_status)
+
         orbView = findViewById(R.id.orb_view)
         connStatusPill = findViewById(R.id.conn_status_pill)
         listenStatusPill = findViewById(R.id.listen_status_pill)
@@ -140,21 +152,50 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
         val commandsToggle = findViewById<TextView>(R.id.commands_toggle)
         val speakRepliesSwitch = findViewById<Switch>(R.id.speak_replies_switch)
         val volumeSeekBar = findViewById<SeekBar>(R.id.volume_seek_bar)
-        val serverUrlInput = findViewById<EditText>(R.id.server_url_input)
-        val passwordInput = findViewById<EditText>(R.id.password_input)
-        val loginButton = findViewById<Button>(R.id.login_button)
-        val loginStatus = findViewById<TextView>(R.id.login_status)
+        val changeServerButton = findViewById<Button>(R.id.change_server_button)
 
         val savedUrl = prefs.getString("server_url", "")
-        serverUrlInput.setText(savedUrl)
+        loginServerUrlInput.setText(savedUrl)
         api = JarvisApiClient(savedUrl ?: "")
         api.restoreSession(prefs.getString("session_cookie", null))
-        if (api.hasSession()) {
-            loginStatus.text = "Sesión guardada. Puedes escribirle a JARVIS."
-            setConnected(true)
-        } else {
-            setConnected(false)
+        setConnected(api.hasSession())
+
+        // Splash -> straight to the chat if already logged in from before,
+        // otherwise the login screen. Never dumps the full chat UI on the
+        // user immediately, per their request.
+        startButton.setOnClickListener {
+            if (api.hasSession()) showMainScreen() else showLoginScreen()
         }
+
+        loginScreenButton.setOnClickListener {
+            val url = loginServerUrlInput.text.toString().trim().trimEnd('/')
+            val password = loginPasswordInput.text.toString()
+            if (url.isEmpty() || password.isEmpty()) {
+                loginScreenStatus.text = "Completa el servidor y la contraseña."
+                return@setOnClickListener
+            }
+            prefs.edit().putString("server_url", url).apply()
+            api.setBaseUrl(url)
+            loginScreenStatus.text = "Conectando…"
+
+            runInBackground(
+                work = { api.login(password) },
+                onSuccess = {
+                    prefs.edit().putString("session_cookie", api.currentSessionCookie()).apply()
+                    setConnected(true)
+                    showMainScreen()
+                },
+                onError = { err ->
+                    loginScreenStatus.text = "Error: ${err.message}"
+                    setConnected(false)
+                },
+            )
+        }
+
+        // Lets the user come back to the login screen later (from "Detalles")
+        // to change the server URL or re-enter the password, e.g. after it
+        // rotates or the session expires.
+        changeServerButton.setOnClickListener { showLoginScreen() }
 
         detailsToggle.setOnClickListener {
             val opening = detailsPanel.visibility != View.VISIBLE
@@ -190,36 +231,11 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
 
-        loginButton.setOnClickListener {
-            val url = serverUrlInput.text.toString().trim().trimEnd('/')
-            val password = passwordInput.text.toString()
-            if (url.isEmpty() || password.isEmpty()) {
-                loginStatus.text = "Completa el servidor y la contraseña."
-                return@setOnClickListener
-            }
-            prefs.edit().putString("server_url", url).apply()
-            api.setBaseUrl(url)
-            loginStatus.text = "Conectando…"
-
-            runInBackground(
-                work = { api.login(password) },
-                onSuccess = {
-                    prefs.edit().putString("session_cookie", api.currentSessionCookie()).apply()
-                    loginStatus.text = "Sesión iniciada correctamente."
-                    setConnected(true)
-                },
-                onError = { err ->
-                    loginStatus.text = "Error: ${err.message}"
-                    setConnected(false)
-                },
-            )
-        }
-
         sendButton.setOnClickListener {
             val message = chatInput.text.toString().trim()
             if (message.isEmpty()) return@setOnClickListener
             if (!api.hasSession()) {
-                addChatBubble("Primero inicia sesión en “Detalles”.", isUser = false)
+                addChatBubble("Sesión no iniciada — ve a Detalles y toca “Cambiar servidor o contraseña”.", isUser = false)
                 return@setOnClickListener
             }
             addChatBubble(message, isUser = true)
@@ -256,7 +272,7 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
                 stopListenerService()
             } else {
                 if (!api.hasSession()) {
-                    listenerStatus.text = "Primero inicia sesión en “Detalles”."
+                    listenerStatus.text = "Sesión no iniciada — ve a Detalles y toca “Cambiar servidor o contraseña”."
                     return@setOnClickListener
                 }
                 requestBatteryOptimizationExemption()
@@ -264,6 +280,18 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
                 ensurePermissionsThenStart()
             }
         }
+    }
+
+    private fun showLoginScreen() {
+        splashScreen.visibility = View.GONE
+        loginScreen.visibility = View.VISIBLE
+        mainScreenRoot.visibility = View.GONE
+    }
+
+    private fun showMainScreen() {
+        splashScreen.visibility = View.GONE
+        loginScreen.visibility = View.GONE
+        mainScreenRoot.visibility = View.VISIBLE
     }
 
     override fun onResume() {

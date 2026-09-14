@@ -161,6 +161,25 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Restructured the Android app's entry flow into three
+  screens instead of dropping the user straight into chat: a splash
+  screen (orb + large "JARVIS" title + "Iniciar" button), a dedicated
+  login screen (server URL + password, shown only if not already logged
+  in), and the main screen (the existing chat UI with the orb, Detalles,
+  Comandos). Implemented as three sibling `View`s inside one `FrameLayout`
+  in `activity_main.xml`, visibility-toggled by `MainActivity` — not
+  Fragments/Navigation component, since there are only ever these 3 static
+  screens and the app has no back-stack needs beyond them. The old inline
+  server/password fields inside "Detalles" were replaced by a single
+  "Cambiar servidor o contraseña" button that reopens the login screen, so
+  credentials can still be changed later without re-adding the fields to
+  the main screen. Because there are now two `OrbView` instances (splash
+  and main) and only one is ever visible, `OrbView` gained an
+  `onVisibilityChanged` override that stops/starts its `Choreographer`
+  frame loop so the hidden instance doesn't keep computing particle
+  physics every frame. Rationale: the user explicitly asked for a
+  splash/intro moment before landing in chat, matching the shape of the
+  original web app's own load sequence.
 - **2026-09-14** — Asked what "conciencia" (consciousness) meant in
   practice for JARVIS, the user's concrete ask turned out to be: bring up
   things from past conversations without being asked. This already

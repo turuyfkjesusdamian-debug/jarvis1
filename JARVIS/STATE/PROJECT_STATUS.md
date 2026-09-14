@@ -221,6 +221,19 @@ see "What's missing" below.
   (unknown until the note's text is seen), it just makes the next
   occurrence diagnosable instead of a silent mystery. See
   `JARVIS/ARCHITECTURE.md` § Decisions.
+- **The Android app now opens to a splash screen, not straight into
+  chat** — three sibling `View`s in one `FrameLayout` (`splash_screen` →
+  `login_screen` → `main_screen`), visibility-toggled by `MainActivity`.
+  Splash shows the orb, "JARVIS", and an "Iniciar" button; tapping it
+  goes straight to the main chat screen if a session is already saved,
+  otherwise to the login screen (server URL + password, same fields as
+  before, just moved off "Detalles"); a successful login lands on the
+  main screen. "Detalles" now has a single "Cambiar servidor o
+  contraseña" button that reopens the login screen instead of inline
+  fields. Because there are now two `OrbView` instances (splash + main)
+  and only one is ever visible, `OrbView` pauses its frame loop via
+  `onVisibilityChanged` when hidden. `versionCode 19` / `versionName
+  0.5.6`. See `JARVIS/ARCHITECTURE.md` § Decisions.
 
 ## What's missing / next steps
 
@@ -242,6 +255,12 @@ see "What's missing" below.
   particles/frame doesn't drop frames
   on the software-rendered buffer canvas, and the volume slider actually
   changes both the chat screen's and the background listener's voice.
+- **The new splash/login/main screen flow needs live confirmation** —
+  untested outside this sandbox like every Android UI change: "Iniciar"
+  should skip straight to chat when already logged in, otherwise go to
+  the login screen; a successful login should land on the main screen;
+  and "Cambiar servidor o contraseña" inside "Detalles" should reopen the
+  login screen without losing the main chat screen underneath.
 
 - **The direct-launch overlay permission needs a real-device test** — the
   documented Android exemption (`SYSTEM_ALERT_WINDOW` + an active
