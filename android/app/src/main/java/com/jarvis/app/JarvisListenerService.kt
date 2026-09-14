@@ -6,18 +6,23 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.provider.ContactsContract
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URLEncoder
 import java.text.Normalizer
 import java.util.Locale
 
@@ -25,9 +30,18 @@ import java.util.Locale
  * Foreground service: listens continuously for "oye jarvis" and sends
  * whatever follows straight to the same /api/chat + /api/tts pipeline the
  * web UI and MainActivity's test button use — see
- * JARVIS/ARCHITECTURE.md § Decisions ("milestone 2"). Runs independently
- * of MainActivity's lifecycle: it reads the server URL/session straight
- * from SharedPreferences rather than holding a reference to the activity.
+ * JARVIS/ARCHITECTURE.md § Decisions ("milestone 2"). Two commands are
+ * special-cased and handled entirely on-device instead, never touching
+ * the server: "envíale un mensaje a X que diga Y" (opens WhatsApp with
+ * the message pre-filled — WhatsApp itself doesn't allow a third-party
+ * app to send it, only prepare it) and "llama a X" (places a real phone
+ * call directly). Both require the user to say an explicit "sí" to a
+ * spoken readback before anything happens — see JARVIS/SECURITY.md §
+ * Actions requiring confirmation.
+ *
+ * Runs independently of MainActivity's lifecycle: it reads the server
+ * URL/session straight from SharedPreferences rather than holding a
+ * reference to the activity.
  *
  * Known risk (flagged to the user up front, not yet worked around): MIUI
  * aggressively kills background services unless the user manually
@@ -43,8 +57,24 @@ class JarvisListenerService : Service(), RecognitionListener {
         const val NOTIFICATION_ID = 1
         private const val WAKE_WORD = "oye jarvis"
         private const val FOLLOW_UP_WINDOW_MS = 8_000L
+        private const val CONFIRMATION_WINDOW_MS = 10_000L
         private const val RESTART_DELAY_MS = 300L
         private const val TAG = "JarvisListener"
+
+        // Matches e.g. "envíale un mensaje a mamá que diga que ya voy" /
+        // "mándale mensaje a Juan diciendo hola" against the accent/case
+        // -stripped transcript — see JARVIS/SECURITY.md § Actions requiring
+        // confirmation. Deliberately simple pattern matching, not sent
+        // through Gemini: the contact name and message never need to leave
+        // the phone for this to work.
+        private val SEND_MESSAGE_REGEX = Regex(
+            "(?:envia(?:le)?|manda(?:le)?)\\s+(?:un\\s+)?mensaje\\s+a\\s+(.+?)\\s+" +
+                "(?:que diga|diciendo|con el mensaje|diciendole)\\s+(.+)"
+        )
+        // Matches e.g. "llama a mamá" / "márcale a Juan" / "haz una llamada a mi hermano".
+        private val CALL_REGEX = Regex("(?:llama(?:le)?|marca(?:le)?|haz una llamada)\\s+a\\s+(.+)")
+        // Compared against the accent-stripped transcript, so "señor" here is "senor".
+        private val AFFIRMATIVE_ANSWERS = setOf("si", "si senor", "confirmo", "correcto", "dale", "adelante", "afirmativo")
 
         /** Read by MainActivity to reflect the real service state in the UI. */
         @Volatile
@@ -59,8 +89,30 @@ class JarvisListenerService : Service(), RecognitionListener {
     private var mediaPlayer: android.media.MediaPlayer? = null
     private var awaitingFollowUp = false
     private var running = false
+    private var pendingConfirmation: PendingConfirmation? = null
 
     private val clearFollowUp = Runnable { awaitingFollowUp = false }
+    private val clearPendingConfirmation = Runnable {
+        if (pendingConfirmation != null) {
+            pendingConfirmation = null
+            speakLocally("Se agotó el tiempo, cancelado.")
+        }
+    }
+
+    /** An action with a real side effect, spoken back for yes/no confirmation
+     * before it happens — see JARVIS/SECURITY.md § Actions requiring confirmation. */
+    private sealed class PendingConfirmation {
+        data class WhatsAppMessage(val contactName: String, val phone: String, val message: String) : PendingConfirmation()
+        data class PhoneCall(val contactName: String, val phone: String) : PendingConfirmation()
+    }
+
+    private sealed class CommandParseResult {
+        object NotAMatch : CommandParseResult()
+        data class MissingPermission(val what: String) : CommandParseResult()
+        data class ContactNotFound(val name: String) : CommandParseResult()
+        data class MultipleContacts(val name: String, val count: Int) : CommandParseResult()
+        data class Ready(val pending: PendingConfirmation) : CommandParseResult()
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -156,6 +208,18 @@ class JarvisListenerService : Service(), RecognitionListener {
         if (transcript.isNullOrBlank()) return
         Log.d(TAG, "Heard: $transcript")
 
+        // A pending confirmation (WhatsApp message or phone call) takes
+        // priority over everything else — the very next utterance must be
+        // treated as yes/no, regardless of the wake word. See
+        // JARVIS/SECURITY.md § Actions requiring confirmation: never infer
+        // confirmation from anything but an explicit, current-turn answer.
+        pendingConfirmation?.let { pending ->
+            mainHandler.removeCallbacks(clearFollowUp)
+            awaitingFollowUp = false
+            handleConfirmation(transcript, pending)
+            return
+        }
+
         val normalized = stripAccents(transcript.lowercase(Locale("es")))
         val wakeIndex = normalized.indexOf(WAKE_WORD)
 
@@ -178,7 +242,158 @@ class JarvisListenerService : Service(), RecognitionListener {
             return
         }
 
-        sendCommand(command)
+        val parsed = tryParseWhatsAppCommand(command)
+            .takeIf { it !is CommandParseResult.NotAMatch }
+            ?: tryParseCallCommand(command)
+
+        when (parsed) {
+            is CommandParseResult.Ready -> {
+                pendingConfirmation = parsed.pending
+                mainHandler.postDelayed(clearPendingConfirmation, CONFIRMATION_WINDOW_MS)
+                val prompt = when (val p = parsed.pending) {
+                    is PendingConfirmation.WhatsAppMessage ->
+                        "¿Envío por WhatsApp a ${p.contactName}, el mensaje: ${p.message}? Diga sí o no."
+                    is PendingConfirmation.PhoneCall ->
+                        "¿Llamo a ${p.contactName}? Diga sí o no."
+                }
+                speakLocally(prompt)
+            }
+            is CommandParseResult.ContactNotFound ->
+                speakLocally("No encontré ningún contacto llamado ${parsed.name}, señor.")
+            is CommandParseResult.MultipleContacts ->
+                speakLocally("Encontré ${parsed.count} contactos llamados ${parsed.name}, señor. Sea más específico.")
+            is CommandParseResult.MissingPermission ->
+                speakLocally("No tengo permiso de ${parsed.what}, señor. Actívelo en la app de JARVIS.")
+            CommandParseResult.NotAMatch ->
+                sendCommand(command)
+        }
+    }
+
+    // --- "Envíale un mensaje a X que diga Y" (WhatsApp) / "Llama a X" ---
+    // Both fully on-device: the contact name and message never reach the
+    // JARVIS server or Gemini, only the app (WhatsApp or the dialer) the
+    // confirmation opens.
+
+    private fun tryParseWhatsAppCommand(command: String): CommandParseResult {
+        val normalized = stripAccents(command.lowercase(Locale("es")))
+        val match = SEND_MESSAGE_REGEX.find(normalized) ?: return CommandParseResult.NotAMatch
+        val nameRange = match.groups[1]?.range ?: return CommandParseResult.NotAMatch
+        val messageRange = match.groups[2]?.range ?: return CommandParseResult.NotAMatch
+
+        val contactName = command.substring(nameRange.first, minOf(nameRange.last + 1, command.length)).trim()
+        val message = command.substring(messageRange.first, minOf(messageRange.last + 1, command.length))
+            .trim().trimEnd('.', '!', '?')
+        if (contactName.isEmpty() || message.isEmpty()) return CommandParseResult.NotAMatch
+
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CONTACTS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            return CommandParseResult.MissingPermission("contactos")
+        }
+
+        val matches = lookupContactPhones(contactName)
+        return when {
+            matches.isEmpty() -> CommandParseResult.ContactNotFound(contactName)
+            matches.size > 1 -> CommandParseResult.MultipleContacts(contactName, matches.size)
+            else -> CommandParseResult.Ready(
+                PendingConfirmation.WhatsAppMessage(matches[0].first, digitsOnly(matches[0].second), message)
+            )
+        }
+    }
+
+    private fun tryParseCallCommand(command: String): CommandParseResult {
+        val normalized = stripAccents(command.lowercase(Locale("es")))
+        val match = CALL_REGEX.find(normalized) ?: return CommandParseResult.NotAMatch
+        val nameRange = match.groups[1]?.range ?: return CommandParseResult.NotAMatch
+        val contactName = command.substring(nameRange.first, minOf(nameRange.last + 1, command.length))
+            .trim().trimEnd('.', '!', '?')
+        if (contactName.isEmpty()) return CommandParseResult.NotAMatch
+
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CONTACTS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            return CommandParseResult.MissingPermission("contactos")
+        }
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CALL_PHONE)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            return CommandParseResult.MissingPermission("llamadas")
+        }
+
+        val matches = lookupContactPhones(contactName)
+        return when {
+            matches.isEmpty() -> CommandParseResult.ContactNotFound(contactName)
+            matches.size > 1 -> CommandParseResult.MultipleContacts(contactName, matches.size)
+            else -> CommandParseResult.Ready(
+                PendingConfirmation.PhoneCall(matches[0].first, digitsOnly(matches[0].second))
+            )
+        }
+    }
+
+    /** Returns (displayName, number) pairs whose name contains [name], accent/case-insensitive. */
+    private fun lookupContactPhones(name: String): List<Pair<String, String>> {
+        val target = stripAccents(name.lowercase(Locale("es")))
+        val results = mutableListOf<Pair<String, String>>()
+        val projection = arrayOf(
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER,
+        )
+        contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI, projection, null, null, null)
+            ?.use { cursor ->
+                val nameIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                val numberIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                while (cursor.moveToNext()) {
+                    val displayName = cursor.getString(nameIdx) ?: continue
+                    val number = cursor.getString(numberIdx) ?: continue
+                    if (stripAccents(displayName.lowercase(Locale("es"))).contains(target)) {
+                        results.add(displayName to number)
+                    }
+                }
+            }
+        return results.distinctBy { it.second }
+    }
+
+    private fun digitsOnly(rawNumber: String): String = rawNumber.filter { it.isDigit() }
+
+    private fun handleConfirmation(transcript: String, pending: PendingConfirmation) {
+        mainHandler.removeCallbacks(clearPendingConfirmation)
+        pendingConfirmation = null
+        val normalized = stripAccents(transcript.lowercase(Locale("es"))).trim()
+        val isAffirmative = AFFIRMATIVE_ANSWERS.any { normalized == it || normalized.startsWith("$it ") || normalized.startsWith("$it,") }
+        if (!isAffirmative) {
+            // Anything that isn't a clear "yes" is treated as "no" — never
+            // guess yes on an ambiguous answer for an action with a real
+            // side effect.
+            speakLocally("Cancelado, señor.")
+            return
+        }
+        when (pending) {
+            is PendingConfirmation.WhatsAppMessage -> openWhatsApp(pending)
+            is PendingConfirmation.PhoneCall -> placeCall(pending)
+        }
+    }
+
+    private fun openWhatsApp(pending: PendingConfirmation.WhatsAppMessage) {
+        try {
+            val encodedMessage = URLEncoder.encode(pending.message, "UTF-8")
+            val uri = Uri.parse("https://wa.me/${pending.phone}?text=$encodedMessage")
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            speakLocally("Listo, señor. Abrí WhatsApp con el mensaje para ${pending.contactName}. Solo falta que usted lo envíe.")
+        } catch (e: Exception) {
+            Log.e(TAG, "openWhatsApp failed", e)
+            speakLocally("No pude abrir WhatsApp, señor.")
+        }
+    }
+
+    private fun placeCall(pending: PendingConfirmation.PhoneCall) {
+        try {
+            val uri = Uri.parse("tel:${pending.phone}")
+            startActivity(Intent(Intent.ACTION_CALL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            speakLocally("Llamando a ${pending.contactName}, señor.")
+        } catch (e: Exception) {
+            Log.e(TAG, "placeCall failed", e)
+            speakLocally("No pude realizar la llamada, señor.")
+        }
     }
 
     // --- Talking to the JARVIS backend ---

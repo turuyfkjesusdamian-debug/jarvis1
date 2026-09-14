@@ -36,7 +36,13 @@ class MainActivity : AppCompatActivity() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { granted ->
-        if (granted.values.all { it }) {
+        // READ_CONTACTS/CALL_PHONE are optional: without them the listener
+        // still starts, just the "send a WhatsApp message" / "llama a X"
+        // commands won't work until granted later (from the phone's own
+        // app settings).
+        val optional = setOf(android.Manifest.permission.READ_CONTACTS, android.Manifest.permission.CALL_PHONE)
+        val coreGranted = granted.filterKeys { it !in optional }.values.all { it }
+        if (coreGranted) {
             startListenerService()
         } else {
             listenerStatus.text = "Se necesita permiso de micrófono (y notificaciones) para escuchar."
@@ -128,7 +134,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun ensurePermissionsThenStart() {
-        val needed = mutableListOf(android.Manifest.permission.RECORD_AUDIO)
+        // READ_CONTACTS/CALL_PHONE are requested up front too, even though
+        // only the "send a WhatsApp message" / "llama a X" commands need
+        // them — a foreground Service can't itself pop a runtime
+        // permission dialog, so this is the only chance to ask before
+        // those commands are ever spoken.
+        val needed = mutableListOf(
+            android.Manifest.permission.RECORD_AUDIO,
+            android.Manifest.permission.READ_CONTACTS,
+            android.Manifest.permission.CALL_PHONE,
+        )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             needed.add(android.Manifest.permission.POST_NOTIFICATIONS)
         }

@@ -161,6 +161,45 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Added two on-device Android capabilities, both gated on
+  an explicit spoken confirmation: "envíale un mensaje a X que diga Y"
+  (opens WhatsApp with the message pre-filled) and "llama a X" (places a
+  real phone call). See `JARVIS/SECURITY.md` § Android app actions for the
+  full confirmation rules; key design points:
+  - **Fully on-device, never through the JARVIS server or Gemini.** The
+    user asked directly whether this could "steal" their data; the answer
+    designed for is that it structurally can't for these two commands —
+    command parsing (simple regex against the accent-stripped transcript),
+    contact lookup (`ContactsContract`), and the confirmation
+    readback/listen (Android's on-device `TextToSpeech` and
+    `SpeechRecognizer`) all happen in `JarvisListenerService` with zero
+    network calls. Only the wake word's *other* (non-messaging,
+    non-calling) commands ever reach `/api/chat`.
+  - **WhatsApp**: no direct-send API exists for third-party apps (WhatsApp
+    removed it for spam prevention), so this opens `https://wa.me/<phone>
+    ?text=<message>` (their own documented "click to chat" deep link) —
+    the message arrives pre-filled, but the user must tap Send themselves
+    inside WhatsApp. This is a platform restriction, not a JARVIS choice.
+  - **Phone calls**: `Intent.ACTION_CALL` places the call immediately on
+    confirmation (`CALL_PHONE` permission) — no platform restriction
+    equivalent to WhatsApp's, so once the user says yes, it just happens.
+  - **Contact resolution is a plain case/accent-insensitive substring
+    match against `ContactsContract` display names** — no fuzzy matching,
+    no relationship terms ("mi hermano" only works if a contact is
+    literally saved under that name). Zero matches or multiple matches
+    both abort with a spoken explanation rather than guessing.
+  - **A shared `PendingConfirmation` sealed type and `CommandParseResult`**
+    unify the two commands' confirm-then-act flow (parse → resolve
+    contact → speak readback → wait up to `CONFIRMATION_WINDOW_MS` → act
+    only on a recognized affirmative, anything else including a timeout is
+    "no") rather than duplicating the state machine per command — the
+    next such capability should extend these same two types.
+  - **`READ_CONTACTS`/`CALL_PHONE` are requested up front** (batched with
+    the mic/notification permissions when the listener is first activated)
+    since a foreground `Service` cannot itself prompt for a runtime
+    permission — but both are optional at that point: declining either
+    still lets the background listener start, degrading gracefully to "no
+    tengo permiso" only if that specific command is actually spoken later.
 - **2026-09-14** — Added a public `GET /healthz` endpoint
   (`app/src/server/app.ts`, returns `{ok:true}`, no auth required) so an
   external uptime pinger can keep Render's free-tier service from

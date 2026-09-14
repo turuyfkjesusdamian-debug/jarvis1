@@ -95,12 +95,50 @@ requires a valid session before responding.
   invalidates every previously issued session automatically, since old
   sessions were signed with the old password and will fail verification.
 
+## Android app actions (WhatsApp messages, phone calls)
+
+The Android companion app (`android/`) can, on explicit voice command,
+open WhatsApp with a message pre-filled or place a real phone call — see
+`JARVIS/ARCHITECTURE.md` § Decisions. This is a second, independent place
+the "never infer confirmation" rule from Threat model #3 applies, with its
+own implementation (no `toolRouter`, no zod schema, no `"destructive"`
+tool tier — this is plain Kotlin in
+`JarvisListenerService.kt`), so it needs its own explicit rules:
+
+- **Every such action is spoken back in full and requires an explicit
+  affirmative answer in the same interaction** ("¿Envío por WhatsApp a X,
+  el mensaje: Y? Diga sí o no." / "¿Llamo a X?") before anything happens.
+- **Anything that isn't a recognized affirmative is treated as "no".**
+  There is no ambiguous-but-probably-yes case — silence, an unclear
+  answer, a timeout, or literally saying "no" are all handled identically:
+  nothing happens, and JARVIS says so ("Cancelado, señor.").
+- **The contact name and message content never reach the JARVIS server or
+  Gemini for these two commands.** Parsing the command, resolving the
+  contact via `ContactsContract`, and building the WhatsApp/dialer intent
+  all happen on-device; only the wake word and *other* (non-messaging,
+  non-calling) commands go over the network. This was a deliberate design
+  choice in response to the user's own question about what data JARVIS
+  can see — see `JARVIS/ARCHITECTURE.md` § Decisions.
+- **WhatsApp messages are only ever prepared, never sent** — WhatsApp
+  itself does not allow a third-party app to send on the user's behalf
+  (removed for spam-prevention reasons), so the user still taps "Enviar"
+  inside WhatsApp. Phone calls, by contrast, place immediately on
+  confirmation (`Intent.ACTION_CALL`) — a real call, not a dialer preview
+  — since Android does not have an equivalent restriction there.
+- If a *new* action of this kind is ever added (another app integration,
+  another destructive capability), it must follow the same pattern: full
+  spoken readback, explicit affirmative required, ambiguous treated as
+  "no". Do not add a capability that acts on an inferred or partial
+  confirmation.
+
 ## Reviewing changes
 
 Any PR/change that:
 - adds a new tool with `"write"` or `"destructive"` permission,
 - changes what gets sent to the model as system-level text,
-- changes how confirmation is obtained,
+- changes how confirmation is obtained (in `app/` or in `android/`),
+- adds or changes an Android capability that acts on the phone (contacts,
+  calls, messaging, or anything with a real-world side effect),
 - or touches `config/` or `voice/` secret handling,
 
 should be treated as security-relevant: re-read this document while
