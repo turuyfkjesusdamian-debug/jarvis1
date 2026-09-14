@@ -41,15 +41,20 @@ import java.util.Locale
  *   explicit spoken "sí"** to a full readback first — see
  *   JARVIS/SECURITY.md § Actions requiring confirmation.
  * - "reproduce/busca X en YouTube" (opens YouTube's search results for
- *   X — the user still picks the actual video) and "abre X" (opens any
- *   installed app matched by name). Neither needs confirmation: unlike
+ *   X — the user still picks the actual video), "abre X" (opens any
+ *   installed app matched by name), and "abre X y reproduce/busca Y"
+ *   (opens X, and searches inside it too — but only for apps in
+ *   [SEARCH_DEEP_LINKS] that actually publish a search deep link, like
+ *   YouTube or Spotify; any other app just opens plainly, with JARVIS
+ *   saying it can't search there rather than guessing a URI and possibly
+ *   opening the wrong thing). None of these need confirmation: unlike
  *   WhatsApp/calls, opening an app or a search page affects no one but
  *   the user themselves.
- * All four of the above launch via a tap-to-open notification
+ * All of the above launch via a tap-to-open notification
  * ([launchViaNotification]) rather than directly — Android silently
  * blocks a background Service from opening another app itself (API 29+),
  * with no exception to catch, so a direct `startActivity()` call here
- * looked like it worked but nothing actually appeared. A fifth phrase,
+ * looked like it worked but nothing actually appeared. One more phrase,
  * "jarvis apágate", stops the listener and kills the app's own process
  * outright — no confirmation needed, since it only affects the person
  * saying it.
@@ -101,6 +106,18 @@ class JarvisListenerService : Service(), RecognitionListener {
         // Matches e.g. "abre spotify" / "ábreme la app de whatsapp".
         private val OPEN_APP_REGEX = Regex(
             "abre(?:me)?\\s+(?:la\\s+app\\s+de\\s+|la\\s+aplicacion\\s+de\\s+|la\\s+app\\s+|la\\s+aplicacion\\s+)?(.+)"
+        )
+        // Matches e.g. "abre disney reproduce deadpool" / "abre spotify y busca queen".
+        // Tried before OPEN_APP_REGEX, which would otherwise swallow the whole
+        // thing as one (nonexistent) app name.
+        private val OPEN_AND_PLAY_REGEX = Regex("abre(?:me)?\\s+(.+?)\\s+(?:y\\s+)?(?:reproduce|busca|pon)\\s+(.+)")
+        // Apps with a real, publicly documented search-by-title deep link —
+        // deliberately small. Guessing a scheme for an app that doesn't
+        // publish one (Disney+, Netflix, ...) would silently open to the
+        // wrong place, which is worse than plainly saying it can't search there.
+        private val SEARCH_DEEP_LINKS: Map<String, (String) -> String> = mapOf(
+            "youtube" to { q -> "https://www.youtube.com/results?search_query=${URLEncoder.encode(q, "UTF-8").replace("+", "%20")}" },
+            "spotify" to { q -> "https://open.spotify.com/search/${URLEncoder.encode(q, "UTF-8").replace("+", "%20")}" },
         )
 
         /** Read by MainActivity to reflect the real service state in the UI. */
@@ -332,6 +349,7 @@ class JarvisListenerService : Service(), RecognitionListener {
         val parsed = tryParseWhatsAppCommand(command)
             .takeIf { it !is CommandParseResult.NotAMatch }
             ?: tryParseCallCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
+            ?: tryParseOpenAndPlayCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
             ?: tryParseYouTubeCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
             ?: tryParseOpenAppCommand(command)
 
@@ -451,6 +469,48 @@ class JarvisListenerService : Service(), RecognitionListener {
             "Toque para ver \"$query\" en YouTube",
             "Listo, señor. Toque la notificación para ver los resultados de $query en YouTube."
         )
+    }
+
+    /** "Abre X y reproduce/busca Y" — opens X, and searches inside it too, but
+     * only for the handful of apps in [SEARCH_DEEP_LINKS] that actually publish
+     * a search-by-title deep link. For any other app (Disney+, Netflix, ...),
+     * opens it plainly and says so, rather than silently doing nothing or
+     * guessing a URI scheme that might open the wrong thing. */
+    private fun tryParseOpenAndPlayCommand(command: String): CommandParseResult {
+        val normalized = stripAccents(command.lowercase(Locale("es")))
+        val match = OPEN_AND_PLAY_REGEX.find(normalized) ?: return CommandParseResult.NotAMatch
+        val appRange = match.groups[1]?.range ?: return CommandParseResult.NotAMatch
+        val queryRange = match.groups[2]?.range ?: return CommandParseResult.NotAMatch
+        val appName = command.substring(appRange.first, minOf(appRange.last + 1, command.length)).trim()
+        val query = command.substring(queryRange.first, minOf(queryRange.last + 1, command.length))
+            .trim().trimEnd('.', '!', '?')
+        if (appName.isEmpty() || query.isEmpty()) return CommandParseResult.NotAMatch
+
+        val normalizedAppName = stripAccents(appName.lowercase(Locale("es")))
+        val deepLinkKey = SEARCH_DEEP_LINKS.keys.firstOrNull { normalizedAppName.contains(it) }
+        if (deepLinkKey != null) {
+            val uri = Uri.parse(SEARCH_DEEP_LINKS.getValue(deepLinkKey)(query))
+            val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            return CommandParseResult.LaunchNow(
+                intent,
+                "Toque para buscar \"$query\" en $appName",
+                "Listo, señor. Toque la notificación para buscar $query en $appName."
+            )
+        }
+
+        val matches = findLaunchableApps(appName)
+        return when {
+            matches.isEmpty() -> CommandParseResult.AppNotFound(appName)
+            matches.size > 1 -> CommandParseResult.MultipleApps(appName, matches.size)
+            else -> {
+                val (label, intent) = matches[0]
+                CommandParseResult.LaunchNow(
+                    intent,
+                    "Toque para abrir $label",
+                    "Toque la notificación para abrir $label, señor — no puedo buscar $query ahí automáticamente, tendrá que hacerlo desde la app."
+                )
+            }
+        }
     }
 
     private fun tryParseOpenAppCommand(command: String): CommandParseResult {

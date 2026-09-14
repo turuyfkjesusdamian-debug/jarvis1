@@ -161,6 +161,16 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-14** — Added compound "abre X y reproduce/busca Y" (e.g.
+  "abre Disney reproduce deadpool"). Only opens X *and* searches inside
+  it for a small allowlist of apps (`SEARCH_DEEP_LINKS`: currently
+  YouTube, Spotify) that publish a real, documented search-by-title deep
+  link — for any other app (Disney+, Netflix, ...), it opens the app
+  plainly and tells the user it can't search there automatically, rather
+  than guessing an unofficial URI scheme that could silently open the
+  wrong screen or nothing at all. This mirrors the same reasoning as not
+  auto-playing a specific YouTube video: only automate what's actually
+  reliable, and say so plainly when something isn't rather than faking it.
 - **2026-09-14** — Added two more on-device commands: "reproduce/busca X
   en YouTube" (opens YouTube's search-results page for X) and "abre X"
   (opens any installed app matched by name). Unlike WhatsApp/calls,
