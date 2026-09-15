@@ -10,7 +10,8 @@ import java.nio.charset.StandardCharsets
 
 /**
  * Talks to the existing JARVIS server (the same Express backend the web UI
- * uses) — /api/auth/login, /api/chat, /api/tts. Plain HttpURLConnection on
+ * uses) — /api/auth/login, /api/chat, /api/tts, /api/device-command (Android
+ * only — see classifyDeviceCommand). Plain HttpURLConnection on
  * purpose: no networking library dependency to keep the very first build of
  * this app as likely as possible to compile cleanly in CI, since there's no
  * way to test it interactively before shipping an APK. See
@@ -69,6 +70,50 @@ class JarvisApiClient(private var baseUrl: String) {
             reply = body.optString("reply", ""),
             debugError = if (body.isNull("debugError")) null else body.optString("debugError"),
         )
+    }
+
+    /** One of the small, fixed set of on-device actions the server can classify a
+     * voice command into — see JarvisListenerService.tryDeviceCommandFallback and
+     * JARVIS/ARCHITECTURE.md § Decisions. Deliberately excludes WhatsApp messages
+     * and phone calls: those never go through this path. */
+    sealed class DeviceCommand {
+        object None : DeviceCommand()
+        data class OpenApp(val name: String) : DeviceCommand()
+        data class PlayMedia(val query: String) : DeviceCommand()
+        data class Directions(val destination: String, val origin: String?) : DeviceCommand()
+        data class Nearby(val query: String) : DeviceCommand()
+        data class TapElement(val query: String) : DeviceCommand()
+    }
+
+    /**
+     * Asks the server to classify a voice command that didn't match any of
+     * JarvisListenerService's own deterministic phrasings. Best-effort: any
+     * network/parsing problem returns [DeviceCommand.None] rather than
+     * throwing, since the caller's own fallback (ordinary chat) always works.
+     */
+    fun classifyDeviceCommand(transcript: String): DeviceCommand {
+        return try {
+            val conn = openConnection("/api/device-command", "POST", withSession = true)
+            writeJsonBody(conn, JSONObject().put("transcript", transcript))
+            if (conn.responseCode !in 200..299) return DeviceCommand.None
+            val body = JSONObject(readBody(conn))
+            when (body.optString("action", "none")) {
+                "open_app" -> body.optString("name").takeIf { it.isNotBlank() }
+                    ?.let { DeviceCommand.OpenApp(it) } ?: DeviceCommand.None
+                "play_media" -> body.optString("query").takeIf { it.isNotBlank() }
+                    ?.let { DeviceCommand.PlayMedia(it) } ?: DeviceCommand.None
+                "directions" -> body.optString("destination").takeIf { it.isNotBlank() }
+                    ?.let { DeviceCommand.Directions(it, body.optString("origin").takeIf { o -> o.isNotBlank() }) }
+                    ?: DeviceCommand.None
+                "nearby" -> body.optString("query").takeIf { it.isNotBlank() }
+                    ?.let { DeviceCommand.Nearby(it) } ?: DeviceCommand.None
+                "tap_element" -> body.optString("query").takeIf { it.isNotBlank() }
+                    ?.let { DeviceCommand.TapElement(it) } ?: DeviceCommand.None
+                else -> DeviceCommand.None
+            }
+        } catch (_: Exception) {
+            DeviceCommand.None
+        }
     }
 
     /** Fetches ElevenLabs-synthesized speech for a reply. Returns raw MP3 bytes. */

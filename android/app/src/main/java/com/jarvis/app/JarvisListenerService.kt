@@ -62,6 +62,18 @@ import java.util.Locale
  *   spoken readback of exactly what got tapped is the safety net for a
  *   fuzzy-match miss. Only available once the user manually enables the
  *   accessibility service — see [JarvisAccessibilityService].
+ * - If none of the above regexes match, [tryDeviceCommandFallback] asks the
+ *   server to classify the phrase (one Gemini call, `POST /api/device-command`
+ *   via [JarvisApiClient.classifyDeviceCommand]) into the same set of
+ *   no-confirmation actions — e.g. "reproduce boys don't cry" (no "en
+ *   YouTube" said) still opens a YouTube search, "quiero usar instagram"
+ *   still opens Instagram. Falls through to ordinary chat
+ *   ([sendCommand]) when the classification comes back "none" or the
+ *   request fails. **Never used for WhatsApp/calls** — the server-side
+ *   prompt excludes them outright, and this path can only ever produce the
+ *   same [CommandParseResult.LaunchNow]/[CommandParseResult.TapElement]
+ *   shapes the regexes above do, never a [PendingConfirmation]. See
+ *   JARVIS/ARCHITECTURE.md § Decisions.
  * All of the above launch via [launchApp], which opens the app directly
  * when we hold the optional SYSTEM_ALERT_WINDOW permission (see
  * [addInvisibleOverlayIfPermitted]), or falls back to a tap-to-open
@@ -98,17 +110,25 @@ class JarvisListenerService : Service(), RecognitionListener {
         private const val TAG = "JarvisListener"
 
         // Matches e.g. "envíale un mensaje a mamá que diga que ya voy" /
-        // "mándale mensaje a Juan diciendo hola" against the accent/case
-        // -stripped transcript — see JARVIS/SECURITY.md § Actions requiring
-        // confirmation. Deliberately simple pattern matching, not sent
-        // through Gemini: the contact name and message never need to leave
-        // the phone for this to work.
+        // "mándale mensaje a Juan diciendo hola" / "escríbele un whatsapp a
+        // Juan donde diga que ya llegué" against the accent/case-stripped
+        // transcript — see JARVIS/SECURITY.md § Actions requiring
+        // confirmation. Deliberately kept as hand-written pattern matching,
+        // never sent through Gemini even as a fallback (unlike most other
+        // commands — see tryDeviceCommandFallback): the contact name and
+        // message must never leave the phone for this to work, so its
+        // phrasing coverage can only ever come from widening this regex,
+        // not from the model-based fallback.
         private val SEND_MESSAGE_REGEX = Regex(
-            "(?:envia(?:le)?|manda(?:le)?)\\s+(?:un\\s+)?mensaje\\s+a\\s+(.+?)\\s+" +
-                "(?:que diga|diciendo|con el mensaje|diciendole)\\s+(.+)"
+            "(?:envia(?:le)?|manda(?:le)?|escribe(?:le)?)\\s+(?:un\\s+)?(?:mensaje|whatsapp)\\s+a\\s+(.+?)\\s+" +
+                "(?:que diga|diciendo|con el mensaje|diciendole|donde diga)\\s+(.+)"
         )
-        // Matches e.g. "llama a mamá" / "márcale a Juan" / "haz una llamada a mi hermano".
-        private val CALL_REGEX = Regex("(?:llama(?:le)?|marca(?:le)?|haz una llamada)\\s+a\\s+(.+)")
+        // Matches e.g. "llama a mamá" / "márcale a Juan" / "haz una llamada a mi
+        // hermano" / "quiero llamar a mi hermano" / "telefonéale a Juan". Same
+        // never-through-Gemini reasoning as SEND_MESSAGE_REGEX above.
+        private val CALL_REGEX = Regex(
+            "(?:llama(?:le)?|marca(?:le)?|haz(?:le)? una llamada|quiero llamar|telefonea(?:le)?)\\s+a\\s+(.+)"
+        )
         // Compared against the accent-stripped transcript, so "señor" here is "senor".
         private val AFFIRMATIVE_ANSWERS = setOf("si", "si senor", "confirmo", "correcto", "dale", "adelante", "afirmativo")
         // "jarvis apágate" also matches inside "oye jarvis apágate" as a substring,
@@ -116,9 +136,14 @@ class JarvisListenerService : Service(), RecognitionListener {
         private val SHUTDOWN_PHRASES = listOf("jarvis apagate", "jarvis apagar")
         // Matches e.g. "reproduce despacito en youtube" / "busca gatos en youtube".
         // Opens search results, not a specific video — see class doc comment.
+        // Kept literal on purpose (not "escucha X en youtube" etc.) — unlike
+        // SEND_MESSAGE_REGEX/CALL_REGEX above, a phrasing this doesn't catch
+        // (including "reproduce X" with no "en youtube" at all) still gets
+        // handled, one step slower, by tryDeviceCommandFallback.
         private val YOUTUBE_REGEX = Regex("(?:reproduce|busca|pon)\\s+(.+?)\\s+en\\s+youtube")
-        // Just "abre X" — kept deliberately literal (no "ábreme"/"la app de X"
-        // variants) per the user's exact wording.
+        // Just "abre X" — kept literal for the same reason as YOUTUBE_REGEX
+        // above: "ábreme X", "abre la app de X", "inicia X" etc. still work,
+        // just via tryDeviceCommandFallback instead of matching instantly here.
         private val OPEN_APP_REGEX = Regex("abre\\s+(.+)")
         // Just "abre X y reproduce Z" — tried before OPEN_APP_REGEX, which would
         // otherwise swallow the whole thing as one (nonexistent) app name.
@@ -398,6 +423,16 @@ class JarvisListenerService : Service(), RecognitionListener {
             ?: tryParseTapCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
             ?: tryParseOpenAppCommand(command)
 
+        handleParseResult(parsed, command)
+    }
+
+    /**
+     * Acts on a [CommandParseResult], however it was produced — a hand-written
+     * regex match, or (only for [CommandParseResult.NotAMatch]) the server's
+     * best-effort classification of a phrasing none of the regexes anticipated
+     * (see [tryDeviceCommandFallback], JARVIS/ARCHITECTURE.md § Decisions).
+     */
+    private fun handleParseResult(parsed: CommandParseResult, command: String) {
         when (parsed) {
             is CommandParseResult.Ready -> {
                 pendingConfirmation = parsed.pending
@@ -441,7 +476,47 @@ class JarvisListenerService : Service(), RecognitionListener {
                 }
             }
             CommandParseResult.NotAMatch ->
-                sendCommand(command)
+                tryDeviceCommandFallback(command)
+        }
+    }
+
+    // --- Fallback for phrasings none of the regexes above anticipated ---
+    // Asks the server to classify the command (one Gemini call) into one of
+    // the same no-confirmation action types above, or "none" if it's not
+    // actually a command — see JarvisApiClient.classifyDeviceCommand and
+    // JARVIS/ARCHITECTURE.md § Decisions. Never used for WhatsApp/calls: the
+    // server-side prompt explicitly excludes them, and even if it didn't,
+    // there's no code path here that could turn this result into one — only
+    // into the exact same LaunchNow/TapElement shapes the deterministic
+    // regexes already produce.
+
+    private fun tryDeviceCommandFallback(command: String) {
+        Thread {
+            val classified = try {
+                api.classifyDeviceCommand(command)
+            } catch (e: Exception) {
+                Log.e(TAG, "classifyDeviceCommand failed", e)
+                JarvisApiClient.DeviceCommand.None
+            }
+            val parsed = deviceCommandToParseResult(classified)
+            mainHandler.post {
+                if (parsed == null) {
+                    sendCommand(command) // Not a recognized command either — ordinary chat.
+                } else {
+                    handleParseResult(parsed, command)
+                }
+            }
+        }.start()
+    }
+
+    private fun deviceCommandToParseResult(cmd: JarvisApiClient.DeviceCommand): CommandParseResult? {
+        return when (cmd) {
+            is JarvisApiClient.DeviceCommand.None -> null
+            is JarvisApiClient.DeviceCommand.OpenApp -> buildOpenAppResult(cmd.name)
+            is JarvisApiClient.DeviceCommand.PlayMedia -> buildYouTubeSearchLaunch(cmd.query)
+            is JarvisApiClient.DeviceCommand.Directions -> launchDirections(cmd.origin, cmd.destination)
+            is JarvisApiClient.DeviceCommand.Nearby -> buildNearbyLaunch(cmd.query)
+            is JarvisApiClient.DeviceCommand.TapElement -> CommandParseResult.TapElement(cmd.query)
         }
     }
 
@@ -521,7 +596,13 @@ class JarvisListenerService : Service(), RecognitionListener {
         val queryRange = match.groups[1]?.range ?: return CommandParseResult.NotAMatch
         val query = command.substring(queryRange.first, minOf(queryRange.last + 1, command.length)).trim()
         if (query.isEmpty()) return CommandParseResult.NotAMatch
+        return buildYouTubeSearchLaunch(query)
+    }
 
+    /** Shared by the exact "X en YouTube" phrasing above and the device-command
+     * fallback's play_media action (e.g. "reproduce boys don't cry", with no
+     * "en YouTube" said at all) — see tryDeviceCommandFallback. */
+    private fun buildYouTubeSearchLaunch(query: String): CommandParseResult.LaunchNow {
         val encodedQuery = URLEncoder.encode(query, "UTF-8").replace("+", "%20")
         val uri = Uri.parse("https://www.youtube.com/results?search_query=$encodedQuery")
         val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -571,21 +652,25 @@ class JarvisListenerService : Service(), RecognitionListener {
             val queryRange = match.groups[1]?.range
             if (queryRange != null) {
                 val query = command.substring(queryRange.first, minOf(queryRange.last + 1, command.length)).trim()
-                if (query.isNotEmpty()) {
-                    val encoded = URLEncoder.encode("$query cerca de mi", "UTF-8").replace("+", "%20")
-                    val uri = Uri.parse("https://www.google.com/maps/search/?api=1&query=$encoded")
-                    val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    return CommandParseResult.LaunchNow(
-                        intent,
-                        "Toque para ver \"$query\" cerca de usted",
-                        "Listo, señor. Toque la notificación para ver $query cerca de usted en Maps.",
-                        "Listo, señor. Ahí tiene $query cerca de usted en Maps.",
-                    )
-                }
+                if (query.isNotEmpty()) return buildNearbyLaunch(query)
             }
         }
 
         return CommandParseResult.NotAMatch
+    }
+
+    /** Shared by "busca X cerca" above and the device-command fallback's nearby
+     * action — see tryDeviceCommandFallback. */
+    private fun buildNearbyLaunch(query: String): CommandParseResult.LaunchNow {
+        val encoded = URLEncoder.encode("$query cerca de mi", "UTF-8").replace("+", "%20")
+        val uri = Uri.parse("https://www.google.com/maps/search/?api=1&query=$encoded")
+        val intent = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return CommandParseResult.LaunchNow(
+            intent,
+            "Toque para ver \"$query\" cerca de usted",
+            "Listo, señor. Toque la notificación para ver $query cerca de usted en Maps.",
+            "Listo, señor. Ahí tiene $query cerca de usted en Maps.",
+        )
     }
 
     /** [origin] null means "use my current location", which Maps does automatically when omitted. */
@@ -654,7 +739,12 @@ class JarvisListenerService : Service(), RecognitionListener {
         val appName = command.substring(nameRange.first, minOf(nameRange.last + 1, command.length))
             .trim().trimEnd('.', '!', '?')
         if (appName.isEmpty()) return CommandParseResult.NotAMatch
+        return buildOpenAppResult(appName)
+    }
 
+    /** Shared by "abre X" above and the device-command fallback's open_app
+     * action — see tryDeviceCommandFallback. */
+    private fun buildOpenAppResult(appName: String): CommandParseResult {
         val matches = findLaunchableApps(appName)
         return when {
             matches.isEmpty() -> CommandParseResult.AppNotFound(appName)

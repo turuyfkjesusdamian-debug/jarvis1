@@ -203,6 +203,43 @@ of this section and gets its own rules:
   before adding anything here, same standard as the `SYSTEM_ALERT_WINDOW`
   rule above.
 
+**Device-command fallback (`POST /api/device-command`,
+`tryDeviceCommandFallback`):** when none of the hand-written regexes above
+match a command, `JarvisListenerService` asks the server to classify the
+phrase — via `JarvisCore.classifyDeviceCommand` /
+`voice/geminiClient.ts#classifyDeviceCommand`, one Gemini call — into the
+same fixed set of no-confirmation actions (open an app, play/search media,
+directions, nearby search, tap an element), or `"none"`. This is the one
+place in the app where a phrase the user didn't anticipate can still
+trigger a real action, so it gets its own hard rules:
+
+- **`"none"` is the required default whenever the model is unsure** — the
+  system prompt in `geminiClient.ts` says so explicitly ("ante la duda,
+  responde none"). A missed action just falls through to an ordinary chat
+  reply; a wrongly-taken one is the failure mode this whole rule set exists
+  to avoid.
+- **WhatsApp and phone calls are permanently out of scope for this path.**
+  The classification prompt excludes them by name, and — more importantly
+  — there is no code path from its result back into
+  `PendingConfirmation`: `deviceCommandToParseResult` can only ever produce
+  the same `CommandParseResult.LaunchNow` / `.TapElement` shapes the
+  regexes above do. If a future change ever lets a model-classified result
+  reach WhatsApp/calls, that is a rule violation on its own, independent of
+  anything the prompt says — never add that path.
+- **No new data leaves the phone that wasn't already leaving it.** Every
+  command that reaches this fallback is, by construction, not a WhatsApp
+  message or a call (those never get this far) — it's a phrase that was
+  already going to be sent to `/api/chat` as ordinary conversation the
+  moment classification said `"none"`. This endpoint sends the same
+  transcript to the same server one step earlier, not new data to a new
+  place.
+- **Never throws, on either side.** `classifyDeviceCommand` (server) and
+  `JarvisApiClient.classifyDeviceCommand` (Android) both catch every
+  failure — network, malformed JSON, an unrecognized `action` — and
+  resolve to "no action", so a broken or slow classification degrades to
+  the pre-existing "just chat about it" behavior, never to a stuck or
+  crashed listener.
+
 **How these actions actually launch (`SYSTEM_ALERT_WINDOW`, optional):**
 Android blocks a background `Service` from calling `startActivity()`
 directly (API 29+), so every action above needs a workaround. There are

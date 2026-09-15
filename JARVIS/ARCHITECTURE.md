@@ -161,6 +161,48 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-15** — Made the Android app's voice commands tolerant of
+  phrasing it wasn't literally coded to expect (e.g. "reproduce boys
+  don't cry" — no "en YouTube" said — should still open that YouTube
+  search), on top of `JarvisListenerService`'s existing hand-written
+  regexes rather than replacing them. Two changes:
+  1. Widened `SEND_MESSAGE_REGEX`/`CALL_REGEX` (WhatsApp/calls) to accept a
+     few more verbs ("escríbele", "telefonéale", "quiero llamar a") —
+     these two commands can *only* get more flexible this way, never via
+     the fallback below, since the contact name/message must never reach
+     Gemini (`JARVIS/SECURITY.md` § Actions requiring confirmation).
+     `YOUTUBE_REGEX`/`OPEN_APP_REGEX`/the Maps regexes were deliberately
+     left as their original literal phrasings — see point 2.
+  2. Added a genuine fallback for everything else: when no regex matches,
+     `JarvisListenerService.tryDeviceCommandFallback` sends the phrase to
+     a new endpoint, `POST /api/device-command`
+     (`JarvisCore.classifyDeviceCommand` →
+     `voice/geminiClient.ts#classifyDeviceCommand`, one Gemini call with a
+     strict JSON-only response format), which classifies it into the same
+     no-confirmation action set the regexes already produce — open an app,
+     play/search media, directions, a nearby search, or tap a screen
+     element — or `"none"` if it isn't actually one of those. A real
+     action executes immediately, through the exact same code paths as a
+     regex match (`deviceCommandToParseResult` builds a
+     `CommandParseResult` from it, then `handleParseResult` — extracted
+     from what used to be inline in `handleTranscript` — takes it from
+     there identically either way); `"none"` falls through to the
+     pre-existing behavior of just sending the phrase as ordinary chat.
+     **WhatsApp messages and phone calls are permanently excluded from
+     this path** — the classification prompt says so explicitly, and
+     there is no code path from its result back into
+     `PendingConfirmation` even if it didn't — see
+     `JARVIS/SECURITY.md` § Android app actions for the full rules.
+     Chosen over extending `JarvisCore`'s existing general-chat Gemini
+     call to also return a device action: that call is shared with the
+     web UI, which has no on-device actions to perform, so keeping this
+     as a separate, Android-only endpoint keeps the server's general-chat
+     path capability-agnostic. The cost is transparent, not hidden: an
+     utterance that isn't a fast-path regex match and turns out not to be
+     a command either now takes two sequential Gemini calls (classify,
+     then the ordinary chat reply) instead of one — deliberately accepted
+     since the alternative (skipping classification) is exactly the
+     rigidity the user asked to fix.
 - **2026-09-15** — Gave JARVIS a first, deliberately generic form of touch:
   "toca X" / "aprieta X" simulates a real tap on whatever is currently on
   screen, via a new optional Android Accessibility Service

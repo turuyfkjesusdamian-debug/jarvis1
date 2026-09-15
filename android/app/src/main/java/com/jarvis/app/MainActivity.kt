@@ -70,7 +70,9 @@ class MainActivity : AppCompatActivity() {
          * in JarvisListenerService.kt — update both together when a command
          * changes. See JARVIS/ARCHITECTURE.md § Decisions for the full list.
          */
-        private const val COMMANDS_HELP_TEXT = """“Oye JARVIS” + tu pregunta o mensaje
+        private const val COMMANDS_HELP_TEXT = """No hace falta decir estas frases exactamente como están escritas — JARVIS entiende variantes razonables, y si dices algo que no calza con ninguna, intenta entender igual qué quieres hacer antes de solo contestarte por chat.
+
+“Oye JARVIS” + tu pregunta o mensaje
 Habla con JARVIS normalmente — memoria, tareas, agenda, o charla general.
 
 “Oye JARVIS, envíale un mensaje a [nombre] que diga [mensaje]”

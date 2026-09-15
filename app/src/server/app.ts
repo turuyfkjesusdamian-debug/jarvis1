@@ -7,6 +7,7 @@ import { isValidSessionToken, parseCookies, SESSION_COOKIE_NAME } from "./auth.j
 import { authRouter } from "./routes/auth.js";
 import { toolsRouter } from "./routes/tools.js";
 import { chatRouter } from "./routes/chat.js";
+import { deviceCommandRouter } from "./routes/deviceCommand.js";
 import { statusRouter } from "./routes/status.js";
 import { ttsRouter } from "./routes/tts.js";
 
@@ -65,6 +66,7 @@ export async function createApp(vaultPath: string): Promise<{ app: Express; core
   app.use("/api/auth", authRouter());
   app.use("/api/tools", toolsRouter(core));
   app.use("/api/chat", chatRouter(core));
+  app.use("/api/device-command", deviceCommandRouter(core));
   app.use("/api/status", statusRouter(core));
   app.use("/api/tts", ttsRouter());
 

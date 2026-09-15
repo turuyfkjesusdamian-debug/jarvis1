@@ -21,7 +21,7 @@ belongs to; and — in progress — a native Android companion app (`android/`)
 was started for a voice command that works without opening the web app
 first (see `JARVIS/ARCHITECTURE.md` § Decisions for the full rationale on
 each, including why this sandbox can't build it directly and builds it via
-GitHub Actions instead). 129/129 web-app tests pass (`cd app && npm test`),
+GitHub Actions instead). 136/136 web-app tests pass (`cd app && npm test`),
 `npm run typecheck` and `npm run build` are clean. The Android app has no
 automated tests yet — it can't be exercised in this environment at all;
 see "What's missing" below.
@@ -251,6 +251,26 @@ see "What's missing" below.
   and can miss. `versionCode 20` / `versionName 0.6.0`. See
   `JARVIS/ARCHITECTURE.md` § Decisions and `JARVIS/SECURITY.md` § Android
   app actions.
+- **Voice commands no longer have to be said exactly as coded** — two
+  changes: WhatsApp/calls now accept a few more verbs directly in their
+  regexes (the only way they can get more flexible, since that path never
+  touches Gemini by design); and everything else that doesn't match a
+  regex now falls back to a new server endpoint, `POST
+  /api/device-command` (`JarvisCore.classifyDeviceCommand`, one Gemini
+  call, Android-only — the web UI never calls it), which classifies the
+  phrase into the same no-confirmation action set (open app, play/search
+  media, directions, nearby, tap element) or "none". "Reproduce boys
+  don't cry" now opens a YouTube search for it even though it doesn't say
+  "en YouTube" and there's no hardcoded rule for that song. WhatsApp/calls
+  are permanently excluded from this fallback, by prompt and by code path
+  (`deviceCommandToParseResult` can only ever produce the same
+  `LaunchNow`/`TapElement` shapes the regexes do). Trade-off, stated
+  plainly to the user: an utterance that isn't a fast regex match and
+  turns out to just be conversation now takes two sequential Gemini calls
+  instead of one before the reply comes back. 136/136 web-app tests pass
+  (7 new, `tests/voice/geminiClient.test.ts`). `versionCode 21` /
+  `versionName 0.7.0`. See `JARVIS/ARCHITECTURE.md` § Decisions and
+  `JARVIS/SECURITY.md` § Android app actions.
 
 ## What's missing / next steps
 
