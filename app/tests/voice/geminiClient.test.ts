@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { generateConversationalReply, classifyDeviceCommand } from "../../src/voice/geminiClient.js";
+import {
+  generateConversationalReply,
+  classifyDeviceCommand,
+  describeScreen,
+  locateScreenElement,
+} from "../../src/voice/geminiClient.js";
 import type { JarvisConfig } from "../../src/config/index.js";
 
 function makeConfig(overrides: Partial<JarvisConfig> = {}): JarvisConfig {
@@ -160,5 +165,115 @@ describe("classifyDeviceCommand (Gemini)", () => {
     );
     const result = await classifyDeviceCommand(makeConfig(), "envíale un mensaje a mamá que diga hola");
     expect(result).toEqual({ action: "none" });
+  });
+
+  it("parses a describe_screen classification", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: '{"action":"describe_screen"}' }] } }] }),
+      } as Response))
+    );
+    const result = await classifyDeviceCommand(makeConfig(), "¿qué dice este mensaje?");
+    expect(result).toEqual({ action: "describe_screen" });
+  });
+});
+
+describe("describeScreen (Gemini vision)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("sends the question as text plus the screenshot as inline image data", async () => {
+    let capturedBody: any = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        capturedBody = JSON.parse(init.body as string);
+        return {
+          ok: true,
+          json: async () => ({ candidates: [{ content: { parts: [{ text: "Es un mensaje de tu madre, señor." }] } }] }),
+        } as Response;
+      })
+    );
+    const answer = await describeScreen(makeConfig(), "¿quién me escribió?", "ZmFrZS1qcGVn");
+    expect(capturedBody.contents[0].parts[0]).toEqual({ text: "¿quién me escribió?" });
+    expect(capturedBody.contents[0].parts[1]).toEqual({
+      inlineData: { mimeType: "image/jpeg", data: "ZmFrZS1qcGVn" },
+    });
+    expect(answer).toBe("Es un mensaje de tu madre, señor.");
+  });
+
+  it("throws when GEMINI_API_KEY is not configured", async () => {
+    await expect(
+      describeScreen(makeConfig({ geminiApiKey: undefined }), "¿qué hay aquí?", "ZmFrZQ==")
+    ).rejects.toThrow(/GEMINI_API_KEY/);
+  });
+
+  it("throws a clear error on a non-OK response", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 400, text: async () => "bad request" } as Response)));
+    await expect(describeScreen(makeConfig(), "¿qué hay aquí?", "ZmFrZQ==")).rejects.toThrow(/400/);
+  });
+
+  it("throws when the response has no text", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, json: async () => ({ candidates: [] }) } as Response)));
+    await expect(describeScreen(makeConfig(), "¿qué hay aquí?", "ZmFrZQ==")).rejects.toThrow(/no text/);
+  });
+});
+
+describe("locateScreenElement (Gemini vision)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns not-found without a configured API key, without making a request", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const result = await locateScreenElement(makeConfig({ geminiApiKey: undefined }), "el caballo blanco", "ZmFrZQ==");
+    expect(result).toEqual({ found: false });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("parses a found point", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: '{"found":true,"x":420,"y":610}' }] } }] }),
+      } as Response))
+    );
+    const result = await locateScreenElement(makeConfig(), "el caballo blanco", "ZmFrZQ==");
+    expect(result).toEqual({ found: true, x: 420, y: 610 });
+  });
+
+  it("returns not-found when the model says so", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: '{"found":false}' }] } }] }),
+      } as Response))
+    );
+    const result = await locateScreenElement(makeConfig(), "un dragón rosado", "ZmFrZQ==");
+    expect(result).toEqual({ found: false });
+  });
+
+  it("falls back to not-found on malformed JSON instead of throwing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ candidates: [{ content: { parts: [{ text: "not json" }] } }] }),
+      } as Response))
+    );
+    const result = await locateScreenElement(makeConfig(), "algo", "ZmFrZQ==");
+    expect(result).toEqual({ found: false });
+  });
+
+  it("falls back to not-found on a non-OK response instead of throwing", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500, text: async () => "boom" } as Response)));
+    const result = await locateScreenElement(makeConfig(), "algo", "ZmFrZQ==");
+    expect(result).toEqual({ found: false });
   });
 });

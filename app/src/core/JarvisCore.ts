@@ -19,8 +19,11 @@ import { getConfig } from "../config/index.js";
 import {
   generateConversationalReply,
   classifyDeviceCommand as classifyDeviceCommandViaGemini,
+  describeScreen as describeScreenViaGemini,
+  locateScreenElement as locateScreenElementViaGemini,
   type ChatTurn,
   type DeviceCommandResult,
+  type LocatedPoint,
 } from "../voice/geminiClient.js";
 
 const INDEX_RELATIVE_PATH = "JARVIS/INDEX/vault-index.json";
@@ -236,6 +239,26 @@ ${digest}`;
    */
   async classifyDeviceCommand(utterance: string): Promise<DeviceCommandResult> {
     return classifyDeviceCommandViaGemini(getConfig(), utterance);
+  }
+
+  /**
+   * Used only by the Android app when classifyDeviceCommand returns
+   * "describe_screen" — answers a question about a screenshot of the
+   * phone's current screen. Throws on failure (no safe silent fallback
+   * here; the Android client turns a failure into a spoken apology).
+   */
+  async describeScreen(question: string, imageBase64: string): Promise<string> {
+    return describeScreenViaGemini(getConfig(), question, imageBase64);
+  }
+
+  /**
+   * Used only by the Android app as the vision fallback for "toca X" when
+   * JarvisAccessibilityService's own text search over the accessibility
+   * tree already found nothing (e.g. a custom-drawn view, an icon with no
+   * label). Never throws — resolves to `{ found: false }` on any failure.
+   */
+  async locateScreenElement(description: string, imageBase64: string): Promise<LocatedPoint> {
+    return locateScreenElementViaGemini(getConfig(), description, imageBase64);
   }
 
   private async composeReplyForIntent(

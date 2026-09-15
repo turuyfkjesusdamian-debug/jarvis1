@@ -8,6 +8,7 @@ import { authRouter } from "./routes/auth.js";
 import { toolsRouter } from "./routes/tools.js";
 import { chatRouter } from "./routes/chat.js";
 import { deviceCommandRouter } from "./routes/deviceCommand.js";
+import { visionCommandRouter } from "./routes/visionCommand.js";
 import { statusRouter } from "./routes/status.js";
 import { ttsRouter } from "./routes/tts.js";
 
@@ -30,7 +31,12 @@ export async function createApp(vaultPath: string): Promise<{ app: Express; core
   await core.init();
 
   const app = express();
-  app.use(express.json());
+  // Default 100kb is too small for /api/vision-command's base64-encoded
+  // JPEG screenshots (Android-only — see JARVIS/ARCHITECTURE.md §
+  // Decisions); raised globally rather than per-route since every other
+  // body here is tiny anyway and this is a single-user app behind the
+  // password gate, not a public endpoint under load.
+  app.use(express.json({ limit: "10mb" }));
 
   // Deliberately reveals nothing beyond "the process is up" — an external
   // pinger (e.g. UptimeRobot) hits this every few minutes to keep Render's
@@ -67,6 +73,7 @@ export async function createApp(vaultPath: string): Promise<{ app: Express; core
   app.use("/api/tools", toolsRouter(core));
   app.use("/api/chat", chatRouter(core));
   app.use("/api/device-command", deviceCommandRouter(core));
+  app.use("/api/vision-command", visionCommandRouter(core));
   app.use("/api/status", statusRouter(core));
   app.use("/api/tts", ttsRouter());
 

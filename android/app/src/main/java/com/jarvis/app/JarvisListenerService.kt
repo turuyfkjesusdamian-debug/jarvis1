@@ -61,7 +61,20 @@ import java.util.Locale
  *   label and taps its center). Also no confirmation, same reasoning; the
  *   spoken readback of exactly what got tapped is the safety net for a
  *   fuzzy-match miss. Only available once the user manually enables the
- *   accessibility service — see [JarvisAccessibilityService].
+ *   accessibility service — see [JarvisAccessibilityService]. When the text
+ *   search finds nothing (an icon with no label, a custom-drawn view like a
+ *   game board), [handleTapElement] escalates once to vision: a screenshot
+ *   ([JarvisAccessibilityService.captureScreenshotJpegBase64]) plus one
+ *   Gemini-vision call server-side (`POST /api/vision-command`,
+ *   [JarvisApiClient.locateScreenElement]) to compute where to tap. This is
+ *   the one place a screenshot ever leaves the phone — see
+ *   JARVIS/SECURITY.md § Android app actions.
+ * - "¿qué dice esto?" / "¿quién me escribió?" / any question about
+ *   something currently visible on screen — [handleDescribeScreen], reached
+ *   only via the device-command fallback's `describe_screen` classification
+ *   (no fixed phrasing to match with a regex). Sends the same screenshot +
+ *   the question to `POST /api/vision-command`
+ *   ([JarvisApiClient.describeScreen]) and speaks back the answer.
  * - If none of the above regexes match, [tryDeviceCommandFallback] asks the
  *   server to classify the phrase (one Gemini call, `POST /api/device-command`
  *   via [JarvisApiClient.classifyDeviceCommand]) into the same set of
@@ -230,6 +243,10 @@ class JarvisListenerService : Service(), RecognitionListener {
          * same test as opening an app (JARVIS/SECURITY.md § Android app
          * actions) — this only ever acts on the user's own phone. */
         data class TapElement(val query: String) : CommandParseResult()
+        /** Only ever produced by the device-command fallback (no regex for
+         * this — a question doesn't have a fixed phrasing to match) — see
+         * handleDescribeScreen and JARVIS/ARCHITECTURE.md § Decisions. */
+        object DescribeScreen : CommandParseResult()
     }
 
     /** Result of [launchApp] — decides which spoken message fits what actually happened. */
@@ -462,22 +479,73 @@ class JarvisListenerService : Service(), RecognitionListener {
                 speakLocally("Encontré ${parsed.count} aplicaciones parecidas a ${parsed.name}, señor. Sea más específico.")
             is CommandParseResult.MissingPermission ->
                 speakLocally("No tengo permiso de ${parsed.what}, señor. Actívelo en la app de JARVIS.")
-            is CommandParseResult.TapElement -> {
-                val accessibility = JarvisAccessibilityService.instance
-                if (accessibility == null) {
-                    speakLocally("No tengo el permiso de accesibilidad, señor. Actívelo en Detalles.")
-                } else {
-                    val tappedLabel = accessibility.tapElementByText(parsed.query)
-                    if (tappedLabel != null) {
-                        speakLocally("Toco “$tappedLabel”, señor.")
-                    } else {
-                        speakLocally("No encontré nada en pantalla parecido a “${parsed.query}”, señor.")
-                    }
-                }
-            }
+            is CommandParseResult.TapElement -> handleTapElement(parsed.query)
+            CommandParseResult.DescribeScreen -> handleDescribeScreen(command)
             CommandParseResult.NotAMatch ->
                 tryDeviceCommandFallback(command)
         }
+    }
+
+    // --- "Toca X" execution: text match first, vision as a fallback ---
+    // The accessibility-tree text search (tapElementByText) is instant and
+    // free, so it's always tried first; only when it finds nothing — an
+    // icon with no label, a custom-drawn view like a game board — does this
+    // escalate to a screenshot + the server's Gemini-vision location call.
+    // See JARVIS/ARCHITECTURE.md § Decisions and JARVIS/SECURITY.md §
+    // Android app actions for why a screenshot leaving the device at all is
+    // treated as a bigger privacy step than everything else here.
+
+    private fun handleTapElement(query: String) {
+        val accessibility = JarvisAccessibilityService.instance
+        if (accessibility == null) {
+            speakLocally("No tengo el permiso de accesibilidad, señor. Actívelo en Detalles.")
+            return
+        }
+        val tappedLabel = accessibility.tapElementByText(query)
+        if (tappedLabel != null) {
+            speakLocally("Toco “$tappedLabel”, señor.")
+            return
+        }
+        if (!accessibility.canCaptureScreen()) {
+            speakLocally("No encontré nada en pantalla parecido a “$query”, señor.")
+            return
+        }
+        Thread {
+            val screenshot = accessibility.captureScreenshotJpegBase64()
+            val point = screenshot?.let { api.locateScreenElement(query, it) }
+            mainHandler.post {
+                if (point != null) {
+                    accessibility.tapAtNormalizedPoint(point.x, point.y)
+                    speakLocally("Toco ahí, señor.")
+                } else {
+                    speakLocally("No encontré nada en pantalla parecido a “$query”, señor.")
+                }
+            }
+        }.start()
+    }
+
+    // --- "¿Qué dice esto?" / "¿quién me escribió?" etc. (screen vision) ---
+    // Only ever reached via the device-command fallback's describe_screen
+    // classification — there's no fixed phrasing to match with a regex, by
+    // design (see JARVIS/ARCHITECTURE.md § Decisions).
+
+    private fun handleDescribeScreen(question: String) {
+        val accessibility = JarvisAccessibilityService.instance
+        if (accessibility == null) {
+            speakLocally("No tengo el permiso de accesibilidad, señor. Actívelo en Detalles.")
+            return
+        }
+        if (!accessibility.canCaptureScreen()) {
+            speakLocally("Mi versión de Android es demasiado antigua para ver la pantalla, señor.")
+            return
+        }
+        Thread {
+            val screenshot = accessibility.captureScreenshotJpegBase64()
+            val answer = screenshot?.let { api.describeScreen(question, it) }
+            mainHandler.post {
+                speakLocally(answer ?: "No pude ver la pantalla en este momento, señor.")
+            }
+        }.start()
     }
 
     // --- Fallback for phrasings none of the regexes above anticipated ---
@@ -517,6 +585,7 @@ class JarvisListenerService : Service(), RecognitionListener {
             is JarvisApiClient.DeviceCommand.Directions -> launchDirections(cmd.origin, cmd.destination)
             is JarvisApiClient.DeviceCommand.Nearby -> buildNearbyLaunch(cmd.query)
             is JarvisApiClient.DeviceCommand.TapElement -> CommandParseResult.TapElement(cmd.query)
+            is JarvisApiClient.DeviceCommand.DescribeScreen -> CommandParseResult.DescribeScreen
         }
     }
 

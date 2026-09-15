@@ -21,7 +21,7 @@ belongs to; and — in progress — a native Android companion app (`android/`)
 was started for a voice command that works without opening the web app
 first (see `JARVIS/ARCHITECTURE.md` § Decisions for the full rationale on
 each, including why this sandbox can't build it directly and builds it via
-GitHub Actions instead). 136/136 web-app tests pass (`cd app && npm test`),
+GitHub Actions instead). 146/146 web-app tests pass (`cd app && npm test`),
 `npm run typecheck` and `npm run build` are clean. The Android app has no
 automated tests yet — it can't be exercised in this environment at all;
 see "What's missing" below.
@@ -271,20 +271,52 @@ see "What's missing" below.
   (7 new, `tests/voice/geminiClient.test.ts`). `versionCode 21` /
   `versionName 0.7.0`. See `JARVIS/ARCHITECTURE.md` § Decisions and
   `JARVIS/SECURITY.md` § Android app actions.
+- **JARVIS can now see the screen** — a new server endpoint, `POST
+  /api/vision-command` (`JarvisCore.describeScreen` /
+  `.locateScreenElement`, one Gemini vision call each), used two ways:
+  answering a question about what's currently on screen ("¿qué dice este
+  mensaje?" → the new `describe_screen` classifier action, no fixed
+  phrasing exists for this so it can only ever be reached through
+  `classifyDeviceCommand`, never a regex), and as a second attempt for
+  "toca X" when the existing accessibility-tree text search
+  (`tapElementByText`) finds nothing — an icon with no label, a
+  custom-drawn view like a game board. `JarvisAccessibilityService` gained
+  `captureScreenshotJpegBase64` (needs Android 11+/API 30's
+  `takeScreenshot()`, declared via `canTakeScreenshot="true"` in
+  `accessibility_service_config.xml`) and `tapAtNormalizedPoint`, which
+  scales the server's normalized 0-1000 coordinate answer to the real
+  screen size and taps it. This is the direct continuation of the
+  original "toca X" chess motivating example — locating and tapping one
+  described element now works, though nothing here understands chess
+  rules or board state, so an actual move (pick up a piece, then a
+  destination square) isn't built yet. Sending a screenshot to Gemini is
+  a meaningfully bigger privacy step than every other command in this
+  app (an image of literally whatever is on screen, not just a
+  transcript) — only ever triggered by the user's own explicit,
+  current-turn request, never proactively; see `JARVIS/SECURITY.md` §
+  Android app actions for the full rules, including an explicit note to
+  revisit the no-confirmation default before anything irreversible (a
+  real game move) is built on top of the vision-located tap. 146/146
+  web-app tests pass (10 new). `versionCode 22` / `versionName 0.8.0`.
+  See `JARVIS/ARCHITECTURE.md` § Decisions.
 
 ## What's missing / next steps
 
-- **Chess board reading is the planned follow-up to "toca X"** — the user's
-  actual motivating example ("caballo a e4") needs JARVIS to see the
-  board (screen capture + a vision model to locate squares/pieces, since
-  a chess app's board is normally canvas-drawn with no per-square
-  accessibility node) and compute which square to tap, built on top of
-  the tap primitive that already exists. Also needs: confirming "toca X"
-  itself actually works reliably on a real device first (fuzzy text
-  matching against an arbitrary app's accessibility tree is untested
-  outside this sandbox), and revisiting the no-confirmation default per
-  `JARVIS/SECURITY.md`'s explicit note before an actual game move (which
-  can be irreversible) rides on it.
+- **Screen vision ("toca X" fallback and "describe_screen") needs live
+  confirmation** — untested outside this sandbox like every Android
+  capability: does `takeScreenshot()` actually work once the accessibility
+  service is enabled (it needs `canTakeScreenshot="true"`, easy to get
+  subtly wrong), is the normalized-coordinate tap accurate enough on the
+  user's real screen, and does the configured `GEMINI_MODEL` actually
+  support image input (nearly all current Gemini models do, but this
+  hasn't been checked against the user's specific `.env`).
+- **An actual chess move is still not built** — vision can now locate and
+  tap *one* described element per utterance, but "mueve el caballo a e4"
+  needs picking up a piece then a destination square (two taps, or a
+  dedicated two-step command), plus revisiting the no-confirmation default
+  per `JARVIS/SECURITY.md`'s explicit note before anything irreversible
+  (a real game move) rides on it — deliberately deferred rather than
+  assumed safe by default.
 - **Why Gemini calls are failing on the user's Render deployment is
   still unknown** — the "Entendido, señor." bug report turned out to be
   an existing silent-failure gap in the Android app (now fixed, see

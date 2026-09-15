@@ -10,8 +10,9 @@ import java.nio.charset.StandardCharsets
 
 /**
  * Talks to the existing JARVIS server (the same Express backend the web UI
- * uses) — /api/auth/login, /api/chat, /api/tts, /api/device-command (Android
- * only — see classifyDeviceCommand). Plain HttpURLConnection on
+ * uses) — /api/auth/login, /api/chat, /api/tts, /api/device-command,
+ * /api/vision-command (the last two Android-only — see classifyDeviceCommand,
+ * describeScreen, locateScreenElement). Plain HttpURLConnection on
  * purpose: no networking library dependency to keep the very first build of
  * this app as likely as possible to compile cleanly in CI, since there's no
  * way to test it interactively before shipping an APK. See
@@ -83,6 +84,7 @@ class JarvisApiClient(private var baseUrl: String) {
         data class Directions(val destination: String, val origin: String?) : DeviceCommand()
         data class Nearby(val query: String) : DeviceCommand()
         data class TapElement(val query: String) : DeviceCommand()
+        object DescribeScreen : DeviceCommand()
     }
 
     /**
@@ -109,10 +111,54 @@ class JarvisApiClient(private var baseUrl: String) {
                     ?.let { DeviceCommand.Nearby(it) } ?: DeviceCommand.None
                 "tap_element" -> body.optString("query").takeIf { it.isNotBlank() }
                     ?.let { DeviceCommand.TapElement(it) } ?: DeviceCommand.None
+                "describe_screen" -> DeviceCommand.DescribeScreen
                 else -> DeviceCommand.None
             }
         } catch (_: Exception) {
             DeviceCommand.None
+        }
+    }
+
+    /** A point in the server's normalized 0-1000 coordinate space (0,0
+     * top-left; 1000,1000 bottom-right) — see JarvisAccessibilityService.tapAtNormalizedPoint. */
+    data class ScreenPoint(val x: Int, val y: Int)
+
+    /**
+     * Asks the server to describe/answer a question about a JPEG screenshot
+     * (base64, no `data:` prefix) of the current screen — used when
+     * [classifyDeviceCommand] returns [DeviceCommand.DescribeScreen]. Returns
+     * null on any failure (network, non-2xx, missing field) rather than
+     * throwing, since the caller always has a spoken fallback line ready.
+     */
+    fun describeScreen(transcript: String, imageBase64: String): String? {
+        return try {
+            val conn = openConnection("/api/vision-command", "POST", withSession = true)
+            writeJsonBody(conn, JSONObject().put("transcript", transcript).put("image", imageBase64).put("task", "describe"))
+            if (conn.responseCode !in 200..299) return null
+            JSONObject(readBody(conn)).optString("answer").takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Asks the server to locate a described on-screen element within a JPEG
+     * screenshot (base64, no `data:` prefix) — the vision fallback for
+     * "toca X" once [JarvisAccessibilityService.tapElementByText]'s own text
+     * search already found nothing. Returns null on any failure or when the
+     * server itself reports nothing found — never throws.
+     */
+    fun locateScreenElement(description: String, imageBase64: String): ScreenPoint? {
+        return try {
+            val conn = openConnection("/api/vision-command", "POST", withSession = true)
+            writeJsonBody(conn, JSONObject().put("transcript", description).put("image", imageBase64).put("task", "locate"))
+            if (conn.responseCode !in 200..299) return null
+            val body = JSONObject(readBody(conn))
+            if (!body.optBoolean("found", false)) return null
+            if (!body.has("x") || !body.has("y")) return null
+            ScreenPoint(body.optInt("x"), body.optInt("y"))
+        } catch (_: Exception) {
+            null
         }
     }
 

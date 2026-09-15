@@ -240,6 +240,47 @@ trigger a real action, so it gets its own hard rules:
   the pre-existing "just chat about it" behavior, never to a stuck or
   crashed listener.
 
+**Screen vision (`POST /api/vision-command`, `handleTapElement` /
+`handleDescribeScreen`):** JARVIS can capture a screenshot of the phone's
+current screen and send it to Gemini, either to answer a question about
+what's on it ("¿qué dice este mensaje?" → `describe_screen`) or to locate
+an element the accessibility tree's own text search couldn't find ("toca
+X" when `tapElementByText` returns null — an icon with no label, a
+custom-drawn view like a game board). This is a materially bigger privacy
+step than anything else in this document: every other command here sends
+a short transcript; this sends an image of literally whatever is on the
+user's screen at that moment — a message thread, a photo, a banking app,
+anything. Its rules are correspondingly stricter:
+
+- **Only ever triggered by the user's own explicit, current-turn request**
+  — a `describe_screen` classification of what they just said, or a `toca
+  X` they just asked for. JARVIS never captures or sends a screenshot on
+  its own initiative, on a timer, or as a side effect of any other command.
+  There is no "watch the screen" mode and there must never be one added
+  without a full re-review of this document.
+- **Every screenshot is single-use.** It's captured, base64-encoded,
+  POSTed once, and the resulting `Bitmap` is recycled (`captureScreenshotJpegBase64`)
+  immediately after — never cached, written to disk, or reused across
+  turns. A stale screenshot answering a new question would be worse than
+  no answer at all.
+- **`locateScreenElement` never throws and defaults to "not found"** on any
+  failure (missing config, non-OK response, malformed JSON) — same
+  reasoning as `classifyDeviceCommand`'s "none" default: a missed tap is
+  recoverable, a wrong one might not be.
+- **The tapped point is never confirmed beforehand**, same no-confirmation
+  test as `tapElementByText` (JARVIS only ever acts on the user's own
+  phone, on their own request) — but there's no readback of *what* was at
+  that point either, since a raw coordinate has no label to read back
+  the way `tapElementByText`'s matched node does. This is strictly less
+  safe than the text-match path, which is exactly why it's only ever
+  attempted second, after the text search has already failed.
+- **`describe_screen` has no fixed phrasing** — it can only be reached
+  through `classifyDeviceCommand`'s classification, never a hand-written
+  regex, since there's no bounded way to enumerate every way of asking a
+  question about the screen. That means it inherits every rule the
+  device-command fallback above already has (never WhatsApp/calls-shaped,
+  "none"/no-action is the safe default, never throws to the caller).
+
 **How these actions actually launch (`SYSTEM_ALERT_WINDOW`, optional):**
 Android blocks a background `Service` from calling `startActivity()`
 directly (API 29+), so every action above needs a workaround. There are

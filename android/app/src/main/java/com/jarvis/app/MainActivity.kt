@@ -100,7 +100,10 @@ Abre la ruta entre esos dos puntos en Google Maps.
 Abre una búsqueda cercana a ti en Google Maps.
 
 “Oye JARVIS, toca [algo]” / “aprieta [algo]”
-Toca ese botón o elemento en la pantalla actual (requiere activar el permiso de accesibilidad en Detalles).
+Toca ese botón o elemento en la pantalla actual (requiere activar el permiso de accesibilidad en Detalles). Si no lo encuentra por su nombre, intenta ver la pantalla para ubicarlo igual.
+
+“Oye JARVIS, qué dice esto” / “quién me escribió” / preguntas sobre la pantalla
+JARVIS mira la pantalla actual y responde (mismo permiso de accesibilidad).
 
 “Oye JARVIS, recuérdame que…”
 Guarda ese dato en la memoria permanente de JARVIS.

@@ -60,12 +60,16 @@
         </receiver>
 
         <!-- Optional: lets JarvisListenerService simulate a real touch on
-             screen ("toca X", "aprieta X"). Android does not allow an app
-             to enable its own accessibility service — the user must turn
-             it on manually in Ajustes > Accesibilidad (a button in
-             "Detalles" links straight to that settings screen). Falls
-             back to "no tengo permiso" if never granted. See
-             JARVIS/SECURITY.md § Android app actions (tap-on-screen). -->
+             screen ("toca X", "aprieta X") and, on Android 11+, capture a
+             screenshot to answer questions about what's currently visible
+             or locate an element the accessibility tree's own text search
+             couldn't find (see accessibility_service_config.xml's
+             canTakeScreenshot). Android does not allow an app to enable its
+             own accessibility service — the user must turn it on manually
+             in Ajustes > Accesibilidad (a button in "Detalles" links
+             straight to that settings screen). Falls back to "no tengo
+             permiso" if never granted. See JARVIS/SECURITY.md § Android app
+             actions (tap-on-screen). -->
         <service
             android:name=".JarvisAccessibilityService"
             android:exported="true"

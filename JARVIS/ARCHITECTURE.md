@@ -161,6 +161,49 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-15** — Gave JARVIS actual screen vision: it can now capture a
+  screenshot of the Android app's current screen and send it to Gemini,
+  used in two places. (1) `handleDescribeScreen`, for questions like "¿qué
+  dice este mensaje?" or "¿quién me escribió?" — reached only through
+  `classifyDeviceCommand`'s new `describe_screen` action (no fixed
+  phrasing exists for an arbitrary question, so this can't be a regex).
+  (2) `handleTapElement`, as a second attempt for "toca X" when
+  `JarvisAccessibilityService.tapElementByText`'s accessibility-tree text
+  search finds nothing — the exact case a label-less icon or a
+  custom-drawn view (a chess board, say) always hits, since there's no
+  text node to match at all. Both go through a new server endpoint,
+  `POST /api/vision-command` (`JarvisCore.describeScreen` /
+  `.locateScreenElement` → `voice/geminiClient.ts`, one Gemini call each
+  with the screenshot as inline image data), since the Gemini API key
+  must stay server-side like everywhere else in this project. Locating an
+  element returns a point in a normalized 0-1000 coordinate space
+  (Gemini's own spatial-grounding convention), which
+  `JarvisAccessibilityService.tapAtNormalizedPoint` scales to the actual
+  device screen size and taps for real via `dispatchGesture` — the same
+  primitive `tapElementByText` already used, just driven by computed
+  coordinates instead of a matched node's bounds. Capturing a screenshot
+  needs `AccessibilityService.takeScreenshot()` (Android 11+/API 30,
+  gated behind `canCaptureScreen()`, and declared via
+  `android:canTakeScreenshot="true"` in `accessibility_service_config.xml`
+  — without that flag the call fails outright even with the service
+  otherwise enabled).
+  This is the direct continuation of the chess-move motivating example
+  from the original "toca X" work: with vision now wired in, "mueve el
+  caballo a e4" is reachable in principle, though nothing here understands
+  chess rules or board state yet — it can only locate and tap *one*
+  described element per utterance. A real move (picking up a piece, then
+  a destination square) would need either two consecutive "toca X"-style
+  utterances or a dedicated two-step command; deliberately not built
+  yet, since the safety question below needs a real answer first, not an
+  assumption. Sending screenshots to Gemini at all is a materially bigger
+  privacy step than every other command in this app (a transcript vs. an
+  image of literally whatever is on screen), which is exactly why it's
+  gated behind the user's own explicit, current-turn request and never
+  triggered proactively — see `JARVIS/SECURITY.md` § Android app actions
+  for the full rules, including the explicit note (carried over from the
+  original "toca X" decision) that an irreversible action built on this
+  — an actual game move — should re-evaluate the no-confirmation default
+  before shipping, not inherit it by default.
 - **2026-09-15** — Made the Android app's voice commands tolerant of
   phrasing it wasn't literally coded to expect (e.g. "reproduce boys
   don't cry" — no "en YouTube" said — should still open that YouTube
