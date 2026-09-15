@@ -166,6 +166,43 @@ from Threat model #3 applies just as it does in `app/`:
   should still show the user what will happen (e.g. a search page, not a
   blind auto-play) rather than guessing on their behalf.
 
+**"Toca X" / "aprieta X" (simulated touch, `JarvisAccessibilityService`):**
+lets JARVIS tap whatever is currently on screen by name — e.g. "toca
+enviar". This is a materially different kind of capability from the rest
+of this section and gets its own rules:
+
+- **Requires a separate, optional Android Accessibility Service**
+  (`JarvisAccessibilityService`, `BIND_ACCESSIBILITY_SERVICE`), which
+  Android does not let an app enable for itself — the user must turn it
+  on manually in Ajustes > Accesibilidad (MainActivity's "Detalles" panel
+  only deep-links to that settings screen, same limitation as the
+  battery-optimization/overlay prompts). This is one of the most
+  sensitive permissions Android exposes (full read of on-screen content
+  plus the ability to inject touches into any app), so it must stay
+  strictly opt-in with no attempt to auto-enable or nag repeatedly.
+- **No confirmation, by the same test as opening an app**: tapping
+  something only ever acts on the user's own phone, on their own explicit
+  request in that turn — it does not, by itself, affect another person or
+  cost money. It does not follow the WhatsApp/calls pattern.
+- **The match is fuzzy and can miss** — unlike opening an app (matched
+  against a curated list of actually-installed apps from `PackageManager`),
+  "toca X" searches whatever happens to be on screen for a label that
+  fuzzy-matches X (same accent/case-insensitive, bidirectional-substring
+  logic as contact-name matching, `TextMatch.fuzzyContains`), which can tap
+  the wrong element if two labels are similar. The safety net is that
+  JARVIS always says exactly what it tapped right after tapping it ("Toco
+  'X', señor.") — not a yes/no round-trip beforehand, since that would
+  make ordinary UI navigation unusably slow. **A future capability built
+  on this (e.g. reading a chess board and moving a piece) that can produce
+  an irreversible, hard-to-notice mistake should re-evaluate this
+  no-confirmation default** rather than assume it still applies — see
+  `JARVIS/ARCHITECTURE.md` § Decisions.
+- **Never draw real overlay UI, and never expand this service's declared
+  capabilities (`canRetrieveWindowContent`, `canPerformGestures`) beyond
+  what a specific, already-approved feature needs** — re-read this section
+  before adding anything here, same standard as the `SYSTEM_ALERT_WINDOW`
+  rule above.
+
 **How these actions actually launch (`SYSTEM_ALERT_WINDOW`, optional):**
 Android blocks a background `Service` from calling `startActivity()`
 directly (API 29+), so every action above needs a workaround. There are

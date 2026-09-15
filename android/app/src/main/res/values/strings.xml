@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">JARVIS</string>
+    <string name="accessibility_service_description">Permite que JARVIS toque elementos en la pantalla cuando usted se lo pide por voz o texto (por ejemplo, «toca enviar»). JARVIS no actúa por su cuenta — solo cuando usted lo pide explícitamente en esa misma conversación.</string>
 </resources>

@@ -161,6 +161,37 @@ later without a rewrite:
 
 ## 7. Decisions (newest first)
 
+- **2026-09-15** — Gave JARVIS a first, deliberately generic form of touch:
+  "toca X" / "aprieta X" simulates a real tap on whatever is currently on
+  screen, via a new optional Android Accessibility Service
+  (`JarvisAccessibilityService`). It searches the active window's
+  accessibility node tree for a visible label that fuzzy-matches X (same
+  matching logic as contact names, pulled out into a small shared
+  `TextMatch` object) and dispatches a genuine touch gesture
+  (`dispatchGesture`) at that node's center — not
+  `AccessibilityNodeInfo.ACTION_CLICK` — specifically so this also works on
+  custom-drawn views with no exposed click action, which matters for the
+  motivating example the user gave: eventually reading a chess app's board
+  and tapping specific squares to make a move ("mueve el caballo a e4").
+  Deliberately scoped down for this first pass, chosen explicitly by the
+  user over building chess move automation directly: a generic
+  "tap something by name" primitive now, with board-reading (screen
+  capture + vision model to locate squares, since a chess board is usually
+  canvas-drawn with no per-square accessibility node) planned as a
+  follow-up built on top of the same tap primitive rather than a separate
+  system. No confirmation is required before tapping — same test as
+  opening an app (`JARVIS/SECURITY.md` § Android app actions: does it
+  affect anyone besides the user?) — but because the match is fuzzy and
+  can miss (unlike the curated installed-apps list "abre X" matches
+  against), JARVIS always speaks back exactly what it tapped immediately
+  after tapping it, so a wrong match is caught right away rather than
+  silently. Android does not allow an app to enable its own accessibility
+  service, so this is opt-in only, toggled from Ajustes > Accesibilidad
+  via a deep link added to "Detalles" — see `JARVIS/SECURITY.md` for the
+  full rules on this capability, including the explicit note to
+  re-evaluate the no-confirmation default before building anything on top
+  of it that could make an irreversible mistake (e.g. an actual chess
+  move).
 - **2026-09-14** — Restructured the Android app's entry flow into three
   screens instead of dropping the user straight into chat: a splash
   screen (orb + large "JARVIS" title + "Iniciar" button), a dedicated

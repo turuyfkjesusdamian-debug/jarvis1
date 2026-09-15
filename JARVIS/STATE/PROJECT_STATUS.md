@@ -1,7 +1,7 @@
 ---
 type: state
 scope: project-status
-updated: 2026-09-14
+updated: 2026-09-15
 ---
 
 # Project status
@@ -234,9 +234,37 @@ see "What's missing" below.
   and only one is ever visible, `OrbView` pauses its frame loop via
   `onVisibilityChanged` when hidden. `versionCode 19` / `versionName
   0.5.6`. See `JARVIS/ARCHITECTURE.md` § Decisions.
+- **JARVIS can now simulate a real touch on screen** — "toca X" / "aprieta
+  X" (`JarvisAccessibilityService`, new optional Android Accessibility
+  Service) searches whatever's currently on screen for a matching label
+  and taps its center for real, via `dispatchGesture` rather than
+  `ACTION_CLICK`, so it also works on custom-drawn views with no
+  accessibility click action. This is the first, deliberately generic step
+  toward the user's actual ask (moving chess pieces by voice, "caballo a
+  e4") — chosen over building chess automation directly; reading an actual
+  chess board (screen capture + vision model to locate squares) is a
+  planned follow-up on top of this same tap primitive. Opt-in only
+  (Android doesn't allow an app to self-enable an accessibility service) —
+  a new "Activar toque en pantalla" button in "Detalles" deep-links to
+  Ajustes > Accesibilidad. No confirmation before tapping, but JARVIS
+  always says exactly what it tapped right after, since the match is fuzzy
+  and can miss. `versionCode 20` / `versionName 0.6.0`. See
+  `JARVIS/ARCHITECTURE.md` § Decisions and `JARVIS/SECURITY.md` § Android
+  app actions.
 
 ## What's missing / next steps
 
+- **Chess board reading is the planned follow-up to "toca X"** — the user's
+  actual motivating example ("caballo a e4") needs JARVIS to see the
+  board (screen capture + a vision model to locate squares/pieces, since
+  a chess app's board is normally canvas-drawn with no per-square
+  accessibility node) and compute which square to tap, built on top of
+  the tap primitive that already exists. Also needs: confirming "toca X"
+  itself actually works reliably on a real device first (fuzzy text
+  matching against an arbitrary app's accessibility tree is untested
+  outside this sandbox), and revisiting the no-confirmation default per
+  `JARVIS/SECURITY.md`'s explicit note before an actual game move (which
+  can be irreversible) rides on it.
 - **Why Gemini calls are failing on the user's Render deployment is
   still unknown** — the "Entendido, señor." bug report turned out to be
   an existing silent-failure gap in the Android app (now fixed, see

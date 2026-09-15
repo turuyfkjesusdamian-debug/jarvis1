@@ -55,6 +55,13 @@ import java.util.Locale
  *   opening the wrong thing). None of these need confirmation: unlike
  *   WhatsApp/calls, opening an app or a search page affects no one but
  *   the user themselves.
+ * - "toca X" / "aprieta X" — simulates a real touch on whatever is
+ *   currently on screen, via the optional [JarvisAccessibilityService]
+ *   (searches the active window's accessibility tree for a matching
+ *   label and taps its center). Also no confirmation, same reasoning; the
+ *   spoken readback of exactly what got tapped is the safety net for a
+ *   fuzzy-match miss. Only available once the user manually enables the
+ *   accessibility service — see [JarvisAccessibilityService].
  * All of the above launch via [launchApp], which opens the app directly
  * when we hold the optional SYSTEM_ALERT_WINDOW permission (see
  * [addInvisibleOverlayIfPermitted]), or falls back to a tap-to-open
@@ -121,6 +128,11 @@ class JarvisListenerService : Service(), RecognitionListener {
         private val DIRECTIONS_FROM_TO_REGEX = Regex("como llego de\\s+(.+?)\\s+a\\s+(.+)")
         private val DIRECTIONS_TO_REGEX = Regex("como llego a\\s+(.+)")
         private val NEARBY_REGEX = Regex("busca\\s+(.+?)\\s+cerca(?:\\s+de\\s+mi)?")
+        // Matches e.g. "toca enviar" / "aprieta el boton de aceptar" / "presiona
+        // continuar" — see tryParseTapCommand and JarvisAccessibilityService.
+        private val TAP_REGEX = Regex(
+            "(?:toca|aprieta|presiona|pulsa)\\s+(?:el boton de |la opcion de |donde dice |en )?(.+)"
+        )
         // Apps with a real, publicly documented search-by-title deep link —
         // deliberately small. Guessing a scheme for an app that doesn't
         // publish one (Disney+, Netflix, ...) would silently open to the
@@ -189,6 +201,10 @@ class JarvisListenerService : Service(), RecognitionListener {
             val notifiedSpokenText: String,
             val directSpokenText: String,
         ) : CommandParseResult()
+        /** "Toca X" / "aprieta X" — see tryParseTapCommand. No confirmation:
+         * same test as opening an app (JARVIS/SECURITY.md § Android app
+         * actions) — this only ever acts on the user's own phone. */
+        data class TapElement(val query: String) : CommandParseResult()
     }
 
     /** Result of [launchApp] — decides which spoken message fits what actually happened. */
@@ -379,6 +395,7 @@ class JarvisListenerService : Service(), RecognitionListener {
             ?: tryParseOpenAndPlayCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
             ?: tryParseYouTubeCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
             ?: tryParseMapsCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
+            ?: tryParseTapCommand(command).takeIf { it !is CommandParseResult.NotAMatch }
             ?: tryParseOpenAppCommand(command)
 
         when (parsed) {
@@ -410,6 +427,19 @@ class JarvisListenerService : Service(), RecognitionListener {
                 speakLocally("Encontré ${parsed.count} aplicaciones parecidas a ${parsed.name}, señor. Sea más específico.")
             is CommandParseResult.MissingPermission ->
                 speakLocally("No tengo permiso de ${parsed.what}, señor. Actívelo en la app de JARVIS.")
+            is CommandParseResult.TapElement -> {
+                val accessibility = JarvisAccessibilityService.instance
+                if (accessibility == null) {
+                    speakLocally("No tengo el permiso de accesibilidad, señor. Actívelo en Detalles.")
+                } else {
+                    val tappedLabel = accessibility.tapElementByText(parsed.query)
+                    if (tappedLabel != null) {
+                        speakLocally("Toco “$tappedLabel”, señor.")
+                    } else {
+                        speakLocally("No encontré nada en pantalla parecido a “${parsed.query}”, señor.")
+                    }
+                }
+            }
             CommandParseResult.NotAMatch ->
                 sendCommand(command)
         }
@@ -639,6 +669,24 @@ class JarvisListenerService : Service(), RecognitionListener {
                 )
             }
         }
+    }
+
+    // --- "Toca X" / "aprieta X" (simulated touch, JarvisAccessibilityService) ---
+    // No confirmation — same test as opening an app (JARVIS/SECURITY.md § Android
+    // app actions): this only ever acts on the user's own phone. Unlike opening
+    // an app (matched against a curated, installed-apps list), the match here is
+    // a fuzzy text search over whatever happens to be on screen, so JARVIS always
+    // says exactly what it tapped right after tapping it — that spoken readback,
+    // not a yes/no round-trip, is the safety net for a wrong match.
+
+    private fun tryParseTapCommand(command: String): CommandParseResult {
+        val normalized = stripAccents(command.lowercase(Locale("es")))
+        val match = TAP_REGEX.find(normalized) ?: return CommandParseResult.NotAMatch
+        val queryRange = match.groups[1]?.range ?: return CommandParseResult.NotAMatch
+        val query = command.substring(queryRange.first, minOf(queryRange.last + 1, command.length))
+            .trim().trimEnd('.', '!', '?')
+        if (query.isEmpty()) return CommandParseResult.NotAMatch
+        return CommandParseResult.TapElement(query)
     }
 
     /** Returns (label, launchIntent) pairs for installed launchable apps whose

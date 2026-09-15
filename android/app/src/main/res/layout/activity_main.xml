@@ -401,6 +401,37 @@
                     android:layout_marginBottom="16dp"
                     android:background="#2c1a54" />
 
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Toque en pantalla"
+                    android:textColor="#9A8BC4"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="8dp"
+                    android:text="Permite decir «toca X» o «aprieta X» para que JARVIS toque algo en la pantalla actual. Se activa como cualquier servicio de accesibilidad, desde Ajustes."
+                    android:textColor="#EDE9FE"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/accessibility_button"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    android:background="@drawable/pill_button_secondary_bg"
+                    android:text="Activar toque en pantalla"
+                    android:textColor="#9A8BC4" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginBottom="16dp"
+                    android:background="#2c1a54" />
+
                 <Button
                     android:id="@+id/change_server_button"
                     android:layout_width="match_parent"

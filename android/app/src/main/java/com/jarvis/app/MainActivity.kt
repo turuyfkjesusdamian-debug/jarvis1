@@ -97,6 +97,9 @@ Abre la ruta entre esos dos puntos en Google Maps.
 “Oye JARVIS, busca [algo] cerca”
 Abre una búsqueda cercana a ti en Google Maps.
 
+“Oye JARVIS, toca [algo]” / “aprieta [algo]”
+Toca ese botón o elemento en la pantalla actual (requiere activar el permiso de accesibilidad en Detalles).
+
 “Oye JARVIS, recuérdame que…”
 Guarda ese dato en la memoria permanente de JARVIS.
 
@@ -152,6 +155,7 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
         val commandsToggle = findViewById<TextView>(R.id.commands_toggle)
         val speakRepliesSwitch = findViewById<Switch>(R.id.speak_replies_switch)
         val volumeSeekBar = findViewById<SeekBar>(R.id.volume_seek_bar)
+        val accessibilityButton = findViewById<Button>(R.id.accessibility_button)
         val changeServerButton = findViewById<Button>(R.id.change_server_button)
 
         val savedUrl = prefs.getString("server_url", "")
@@ -196,6 +200,19 @@ Detiene la escucha en segundo plano y cierra la app por completo."""
         // to change the server URL or re-enter the password, e.g. after it
         // rotates or the session expires.
         changeServerButton.setOnClickListener { showLoginScreen() }
+
+        // Android has no in-app toggle for accessibility services (unlike
+        // SYSTEM_ALERT_WINDOW's Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+        // which can target this package directly) — this just deep-links to
+        // the general list, where the user picks "JARVIS" and turns it on.
+        accessibilityButton.setOnClickListener {
+            try {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            } catch (_: Exception) {
+                // Not supported on this ROM — "toca X" just keeps failing with
+                // "no tengo el permiso de accesibilidad".
+            }
+        }
 
         detailsToggle.setOnClickListener {
             val opening = detailsPanel.visibility != View.VISIBLE
